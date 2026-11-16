@@ -22,9 +22,12 @@
         <html:h1>Flashcards</html:h1>
         <html:p id="flashcard-data-path" class="data-path"></html:p>
       </html:div>
-      <html:button id="flashcard-export" class="primary"
-        >Export CSV</html:button
-      >
+      <html:div class="export-actions">
+        <html:button id="flashcard-export-anki">Export Anki TSV</html:button>
+        <html:button id="flashcard-export" class="primary"
+          >Export CSV</html:button
+        >
+      </html:div>
     </html:header>
     <html:div id="flashcard-error" class="error" hidden="true"></html:div>
     <html:nav class="tabs" aria-label="Flashcard views">

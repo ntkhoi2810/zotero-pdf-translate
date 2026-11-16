@@ -68,7 +68,7 @@ pref-flashcards-autoSave =
 pref-flashcards-storage = Data file
 pref-flashcards-browse =
     .label = Choose Folder…
-pref-flashcards-hint = Stored as local JSON; export a UTF-8 CSV from the flashcard window.
+pref-flashcards-hint = Stored as local JSON; export an Excel CSV or Anki TSV from the flashcard window.
 pref-flashcards-open =
     .label = Open Flashcards
 

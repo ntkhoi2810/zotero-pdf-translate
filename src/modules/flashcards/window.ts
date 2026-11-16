@@ -1,6 +1,7 @@
 import { config } from "../../../package.json";
 import {
   deleteFlashcard,
+  exportFlashcardsAnkiTSV,
   exportFlashcardsCSV,
   Flashcard,
   getFlashcardFilePath,
@@ -18,11 +19,13 @@ function labels() {
         empty: "Chưa có từ vựng. Hãy tra một từ để tạo thẻ đầu tiên.",
         deletePrompt: "Xóa flashcard này?",
         exportTitle: "Xuất flashcard sang CSV",
+        exportAnkiTitle: "Xuất flashcard cho Anki",
         exported: (count: number) => `Đã xuất ${count} thẻ.`,
         saveError: "Không thể lưu thay đổi.",
         loadError: "Không thể đọc kho flashcard.",
         path: "Dữ liệu: ",
         export: "Xuất CSV",
+        exportAnki: "Xuất Anki TSV",
         library: "Thư viện",
         review: "Ôn tập",
         search: "Tìm từ và nghĩa…",
@@ -37,11 +40,13 @@ function labels() {
         empty: "No vocabulary yet. Look up a word to create your first card.",
         deletePrompt: "Delete this flashcard?",
         exportTitle: "Export flashcards to CSV",
+        exportAnkiTitle: "Export flashcards for Anki",
         exported: (count: number) => `Exported ${count} cards.`,
         saveError: "Could not save changes.",
         loadError: "Could not read the flashcard library.",
         path: "Data: ",
         export: "Export CSV",
+        exportAnki: "Export Anki TSV",
         library: "Library",
         review: "Review",
         search: "Search words and meanings…",
@@ -112,8 +117,23 @@ export async function initializeFlashcardWindow(win: Window) {
     reviewCard.hidden = !card;
     reviewEmpty.hidden = !!card;
     if (!card) return;
-    query<HTMLElement>("#flashcard-review-word").textContent = card.word;
-    query<HTMLElement>("#flashcard-review-meaning").textContent = card.meaning;
+    query<HTMLElement>("#flashcard-review-word").textContent = [
+      card.word,
+      card.partOfSpeech ? `[${card.partOfSpeech}]` : "",
+      card.pronunciation || "",
+      card.exampleEn || "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    query<HTMLElement>("#flashcard-review-meaning").textContent = [
+      card.definitionVi || "",
+      card.definitionEn || card.meaning,
+      card.exampleVi || "",
+      card.synonyms?.length ? `Synonyms: ${card.synonyms.join(", ")}` : "",
+      card.antonyms?.length ? `Antonyms: ${card.antonyms.join(", ")}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     query<HTMLElement>("#flashcard-review-meaning").hidden = !state.revealed;
     query<HTMLElement>("#flashcard-review-hint").hidden = state.revealed;
     query<HTMLElement>("#flashcard-review-progress").textContent =
@@ -141,7 +161,14 @@ export async function initializeFlashcardWindow(win: Window) {
     const meaning = createHTML("span");
     meaning.textContent = card.meaning;
     const meta = createHTML("small");
-    meta.textContent = `${card.langFrom || "?"} → ${card.langTo || "?"} · ${card.lookupCount}×`;
+    meta.textContent = [
+      card.partOfSpeech,
+      card.pronunciation,
+      `${card.langFrom || "?"} → ${card.langTo || "?"}`,
+      `${card.lookupCount}×`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
     content.append(word, meaning, meta);
 
     const editor = createHTML("form");
@@ -218,6 +245,8 @@ export async function initializeFlashcardWindow(win: Window) {
   query<HTMLElement>("#flashcard-data-path").textContent =
     text.path + getFlashcardFilePath();
   query<HTMLButtonElement>("#flashcard-export").textContent = text.export;
+  query<HTMLButtonElement>("#flashcard-export-anki").textContent =
+    text.exportAnki;
   query<HTMLButtonElement>("#flashcard-tab-list").textContent = text.library;
   query<HTMLButtonElement>("#flashcard-tab-review").textContent = text.review;
   search.placeholder = text.search;
@@ -263,6 +292,25 @@ export async function initializeFlashcardWindow(win: Window) {
       ).open();
       if (!filePath) return;
       const exported = await exportFlashcardsCSV(filePath);
+      new ztoolkit.ProgressWindow("Flashcards")
+        .createLine({ text: text.exported(exported), progress: 100 })
+        .show();
+    } catch (cause) {
+      ztoolkit.log(cause);
+      showError(text.saveError);
+    }
+  });
+  query("#flashcard-export-anki").addEventListener("click", async () => {
+    try {
+      const filePath = await new ztoolkit.FilePicker(
+        text.exportAnkiTitle,
+        "save",
+        [["TSV", "*.tsv"]],
+        `zotero-flashcards-anki-${new Date().toISOString().slice(0, 10)}.tsv`,
+        win,
+      ).open();
+      if (!filePath) return;
+      const exported = await exportFlashcardsAnkiTSV(filePath);
       new ztoolkit.ProgressWindow("Flashcards")
         .createLine({ text: text.exported(exported), progress: 100 })
         .show();

@@ -14,6 +14,14 @@ export function buildPromptParts(
   sourceText: string,
   data: Required<TranslateTask>,
 ): { system: string; user: string } {
+  const override = (
+    data as TranslateTask & {
+      llmPromptOverride?: { system: string; user: string };
+    }
+  ).llmPromptOverride;
+  if (override) {
+    return override;
+  }
   const prompt = getPref(prefKey) as string;
   const marker = "${sourceText}";
   const markerIndex = prompt.indexOf(marker);

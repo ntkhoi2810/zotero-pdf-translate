@@ -310,6 +310,14 @@ export class TranslationServices {
         ztoolkit.log("cache hit", sanitizeTaskForLog(cachedTask));
         task.audio = cachedTask.audio;
         task.result = cachedTask.result;
+        const cachedVocabulary = (
+          cachedTask as TranslateTask & { vocabularyLookup?: unknown }
+        ).vocabularyLookup;
+        if (cachedVocabulary) {
+          (
+            task as TranslateTask & { vocabularyLookup?: unknown }
+          ).vocabularyLookup = cachedVocabulary;
+        }
         task.status = "success";
 
         if (!noDisplay) {

@@ -1,8 +1,9 @@
 import { getPref } from "../../utils/prefs";
 import type { TranslateTask } from "../../utils/task";
 import { isSingleWordText } from "../../utils/word";
+import type { VocabularyLookup, VocabularySense } from "../dictionary/model";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const DATA_DIRECTORY = "zotero-pdf-translate";
 const DATA_FILE = "flashcards.json";
 
@@ -20,6 +21,21 @@ export interface Flashcard {
   createdAt: string;
   lastSeenAt: string;
   lookupCount: number;
+  senseId?: string;
+  partOfSpeech?: string;
+  pronunciation?: string;
+  definitionOriginal?: string;
+  definitionEn?: string;
+  definitionVi?: string;
+  exampleEn?: string;
+  exampleVi?: string;
+  exampleSource?: "dictionary" | "ai" | "none";
+  synonyms?: string[];
+  antonyms?: string[];
+  tags?: string[];
+  sourceUrl?: string;
+  sourceLicense?: string;
+  llmService?: string;
 }
 
 interface FlashcardDatabase {
@@ -65,7 +81,10 @@ function validateDatabase(value: unknown): FlashcardDatabase {
     throw new Error("Flashcard data is not a JSON object.");
   }
   const data = value as Partial<FlashcardDatabase>;
-  if (data.schemaVersion !== SCHEMA_VERSION || !Array.isArray(data.cards)) {
+  if (
+    ![1, SCHEMA_VERSION].includes(data.schemaVersion || 0) ||
+    !Array.isArray(data.cards)
+  ) {
     throw new Error("Unsupported or invalid flashcard data format.");
   }
   const cardsAreValid = data.cards.every(
@@ -136,6 +155,9 @@ function withWriteLock<T>(operation: () => Promise<T>) {
 }
 
 export async function saveFlashcardFromTask(task: TranslateTask) {
+  const vocabularyLookup = (
+    task as TranslateTask & { vocabularyLookup?: VocabularyLookup }
+  ).vocabularyLookup;
   if (
     !getPref("flashcards.autoSave") ||
     task.type !== "text" ||
@@ -144,7 +166,8 @@ export async function saveFlashcardFromTask(task: TranslateTask) {
     task.status !== "success" ||
     !isSingleWordText(task.raw) ||
     !task.raw.trim() ||
-    !task.result.trim()
+    !task.result.trim() ||
+    vocabularyLookup
   ) {
     return false;
   }
@@ -198,6 +221,95 @@ export async function saveFlashcardFromTask(task: TranslateTask) {
   });
 }
 
+function vocabularyMeaning(sense: VocabularySense) {
+  return [
+    sense.definitionVi,
+    sense.definitionEn,
+    sense.exampleEn ? `Example: ${sense.exampleEn}` : "",
+    sense.exampleVi ? `Ví dụ: ${sense.exampleVi}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getStructuredCardKey(word: string, senseId: string) {
+  return `${normalizeFlashcardWord(word)}\u0000${senseId}`;
+}
+
+export async function saveVocabularySenseFromTask(
+  task: TranslateTask,
+  senseId: string,
+) {
+  const lookup = (
+    task as TranslateTask & { vocabularyLookup?: VocabularyLookup }
+  ).vocabularyLookup;
+  const sense = lookup?.senses.find((candidate) => candidate.id === senseId);
+  if (!lookup || !sense) return false;
+
+  return withWriteLock(async () => {
+    const database = await readFlashcards();
+    const now = new Date().toISOString();
+    const key = getStructuredCardKey(lookup.word, sense.id);
+    const existing = database.cards.find(
+      (card) =>
+        card.senseId && getStructuredCardKey(card.word, card.senseId) === key,
+    );
+    const item = task.itemId ? Zotero.Items.get(task.itemId) : false;
+    const topItem = item ? Zotero.Items.getTopLevel([item])[0] : false;
+    const structured = {
+      senseId: sense.id,
+      partOfSpeech: sense.partOfSpeech,
+      pronunciation: sense.pronunciation,
+      definitionOriginal: sense.definitionOriginal,
+      definitionEn: sense.definitionEn,
+      definitionVi: sense.definitionVi,
+      exampleEn: sense.exampleEn,
+      exampleVi: sense.exampleVi,
+      exampleSource: sense.exampleSource,
+      synonyms: sense.synonyms,
+      antonyms: sense.antonyms,
+      tags: sense.tags,
+      sourceUrl: lookup.sourceUrl,
+      sourceLicense: lookup.sourceLicense,
+      llmService: lookup.llmService,
+    };
+    if (existing) {
+      existing.lastSeenAt = now;
+      existing.lookupCount += 1;
+      existing.service = task.service;
+      existing.audio = task.audio;
+      Object.assign(existing, structured);
+      if (!existing.meaningEdited) existing.meaning = vocabularyMeaning(sense);
+      if (topItem) {
+        existing.itemID = topItem.id;
+        existing.itemTitle = (topItem.getField("title") as string) || "";
+      }
+    } else {
+      database.cards.unshift({
+        id: `${Zotero.Utilities.randomString()}-${Date.now()}`,
+        word: lookup.word,
+        meaning: vocabularyMeaning(sense),
+        meaningEdited: false,
+        langFrom: lookup.language,
+        langTo: "vi",
+        service: task.service,
+        audio: task.audio,
+        itemID: topItem ? topItem.id : undefined,
+        itemTitle: topItem
+          ? (topItem.getField("title") as string) || ""
+          : undefined,
+        createdAt: now,
+        lastSeenAt: now,
+        lookupCount: 1,
+        ...structured,
+      });
+    }
+    await writeDatabase(database);
+    task.flashcardSaved = true;
+    return true;
+  });
+}
+
 export async function updateFlashcard(
   id: string,
   changes: Pick<Flashcard, "word" | "meaning">,
@@ -235,6 +347,16 @@ export function flashcardsToCSV(cards: Flashcard[]) {
   const rows = [
     [
       "word",
+      "part_of_speech",
+      "pronunciation",
+      "definition_english",
+      "definition_vietnamese",
+      "example_english",
+      "example_vietnamese",
+      "example_source",
+      "synonyms",
+      "antonyms",
+      "labels",
       "meaning",
       "language_from",
       "language_to",
@@ -243,9 +365,24 @@ export function flashcardsToCSV(cards: Flashcard[]) {
       "created_at",
       "last_seen_at",
       "lookup_count",
+      "card_id",
+      "sense_id",
+      "dictionary_source",
+      "dictionary_license",
+      "llm_service",
     ],
     ...cards.map((card) => [
       card.word,
+      card.partOfSpeech || "",
+      card.pronunciation || "",
+      card.definitionEn || "",
+      card.definitionVi || "",
+      card.exampleEn || "",
+      card.exampleVi || "",
+      card.exampleSource || "",
+      (card.synonyms || []).join("; "),
+      (card.antonyms || []).join("; "),
+      (card.tags || []).join("; "),
       card.meaning,
       card.langFrom,
       card.langTo,
@@ -254,14 +391,95 @@ export function flashcardsToCSV(cards: Flashcard[]) {
       card.createdAt,
       card.lastSeenAt,
       card.lookupCount,
+      card.id,
+      card.senseId || "",
+      card.sourceUrl || "",
+      card.sourceLicense || "",
+      card.llmService || "",
     ]),
   ];
   return `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
 }
 
+function escapeHTML(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function tsvCell(value: unknown) {
+  return String(value ?? "")
+    .replace(/\t/g, " ")
+    .replace(/\r?\n/g, "<br>");
+}
+
+export function flashcardsToAnkiTSV(cards: Flashcard[]) {
+  const rows = cards.map((card) => {
+    const front = [
+      `<div class="word">${escapeHTML(card.word)}</div>`,
+      card.partOfSpeech
+        ? `<div class="pos">${escapeHTML(card.partOfSpeech)}</div>`
+        : "",
+      card.pronunciation
+        ? `<div class="pronunciation">${escapeHTML(card.pronunciation)}</div>`
+        : "",
+      card.exampleEn
+        ? `<div class="example">${escapeHTML(card.exampleEn)}</div>`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("");
+    const back = [
+      card.definitionVi
+        ? `<div class="definition vi">${escapeHTML(card.definitionVi)}</div>`
+        : "",
+      card.definitionEn
+        ? `<div class="definition en">${escapeHTML(card.definitionEn)}</div>`
+        : `<div class="definition">${escapeHTML(card.meaning)}</div>`,
+      card.exampleVi
+        ? `<div class="example vi">${escapeHTML(card.exampleVi)}</div>`
+        : "",
+      card.synonyms?.length
+        ? `<div><b>Synonyms:</b> ${escapeHTML(card.synonyms.join(", "))}</div>`
+        : "",
+      card.antonyms?.length
+        ? `<div><b>Antonyms:</b> ${escapeHTML(card.antonyms.join(", "))}</div>`
+        : "",
+      card.sourceUrl
+        ? `<div class="source">Source: ${escapeHTML(card.sourceUrl)} (${escapeHTML(
+            card.sourceLicense || "",
+          )})</div>`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("");
+    const tags = ["zotero-vocabulary", ...(card.tags || [])]
+      .map((tag) => tag.replace(/\s+/g, "_"))
+      .join(" ");
+    return [card.id, front, back, tags].map(tsvCell).join("\t");
+  });
+  return [
+    "#separator:Tab",
+    "#html:true",
+    "#tags column:4",
+    "#columns:ID\tFront\tBack\tTags",
+    ...rows,
+  ].join("\r\n");
+}
+
 export async function exportFlashcardsCSV(filePath: string) {
   const database = await readFlashcards();
   await IOUtils.writeUTF8(filePath, flashcardsToCSV(database.cards), {
+    tmpPath: `${filePath}.tmp`,
+  });
+  return database.cards.length;
+}
+
+export async function exportFlashcardsAnkiTSV(filePath: string) {
+  const database = await readFlashcards();
+  await IOUtils.writeUTF8(filePath, flashcardsToAnkiTSV(database.cards), {
     tmpPath: `${filePath}.tmp`,
   });
   return database.cards.length;
@@ -282,7 +500,9 @@ export async function migrateFlashcardStorage(targetDirectory: string) {
   }
   const merged = new Map<string, Flashcard>();
   for (const card of [...targetDatabase.cards, ...sourceDatabase.cards]) {
-    const key = getFlashcardKey(card.word, card.langFrom, card.langTo);
+    const key = card.senseId
+      ? getStructuredCardKey(card.word, card.senseId)
+      : getFlashcardKey(card.word, card.langFrom, card.langTo);
     const previous = merged.get(key);
     if (!previous || card.lastSeenAt > previous.lastSeenAt)
       merged.set(key, card);

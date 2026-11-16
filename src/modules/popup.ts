@@ -4,6 +4,8 @@ import { getString } from "../utils/locale";
 import { getPref, setPref } from "../utils/prefs";
 import { addTranslateTask, getLastTranslateTask } from "../utils/task";
 import { slice } from "../utils/str";
+import { saveVocabularySenseFromTask } from "./flashcards/storage";
+import type { VocabularyLookup } from "./dictionary/model";
 
 export function updateReaderPopup() {
   const popup = addon.data.popup.currentPopup;
@@ -33,6 +35,9 @@ export function updateReaderPopup() {
   const flashcardStatus = popup?.querySelector(
     `#${makeId("flashcard-status")}`,
   ) as HTMLDivElement;
+  const vocabularyPicker = popup?.querySelector(
+    `#${makeId("vocabulary-picker")}`,
+  ) as HTMLDivElement;
 
   const updateHidden = (elem: HTMLElement, hidden: boolean) => {
     if (hidden) {
@@ -48,6 +53,7 @@ export function updateReaderPopup() {
     updateHidden(textarea, true);
     updateHidden(addToNoteButton, true);
     updateHidden(flashcardStatus, true);
+    updateHidden(vocabularyPicker, true);
     return;
   }
   const task = getLastTranslateTask({ type: "text" });
@@ -110,6 +116,74 @@ export function updateReaderPopup() {
       : "✓ Saved to flashcards";
     updateHidden(flashcardStatus, !(task.wordLookup && task.flashcardSaved));
   }
+  if (vocabularyPicker) {
+    const lookup = (
+      task as typeof task & { vocabularyLookup?: VocabularyLookup }
+    ).vocabularyLookup;
+    vocabularyPicker.replaceChildren();
+    updateHidden(vocabularyPicker, !lookup?.senses.length);
+    if (lookup?.senses.length) {
+      const doc = vocabularyPicker.ownerDocument;
+      const title = doc.createElementNS(
+        "http://www.w3.org/1999/xhtml",
+        "strong",
+      );
+      title.textContent = Zotero.locale.startsWith("vi")
+        ? "Chọn nghĩa để tạo flashcard"
+        : "Select meanings for flashcards";
+      vocabularyPicker.append(title);
+      const selected = new Set<string>();
+      for (const sense of lookup.senses) {
+        const label = doc.createElementNS(
+          "http://www.w3.org/1999/xhtml",
+          "label",
+        );
+        label.style.cssText =
+          "display:flex;gap:8px;align-items:flex-start;padding:5px 0;cursor:pointer";
+        const checkbox = doc.createElementNS(
+          "http://www.w3.org/1999/xhtml",
+          "input",
+        ) as HTMLInputElement;
+        checkbox.type = "checkbox";
+        const content = doc.createElementNS(
+          "http://www.w3.org/1999/xhtml",
+          "span",
+        );
+        content.textContent = `[${sense.partOfSpeech}] ${
+          sense.definitionVi || sense.definitionEn
+        }`;
+        label.append(checkbox, content);
+        vocabularyPicker.append(label);
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) selected.add(sense.id);
+          else selected.delete(sense.id);
+          save.disabled = selected.size === 0;
+        });
+      }
+      const save = doc.createElementNS(
+        "http://www.w3.org/1999/xhtml",
+        "button",
+      ) as HTMLButtonElement;
+      save.className = "toolbar-button wide-button";
+      save.disabled = true;
+      save.textContent = Zotero.locale.startsWith("vi")
+        ? "Lưu nghĩa đã chọn"
+        : "Save selected meanings";
+      save.addEventListener("click", async () => {
+        save.disabled = true;
+        let saved = 0;
+        for (const senseId of selected) {
+          if (await saveVocabularySenseFromTask(task, senseId)) saved++;
+        }
+        flashcardStatus.textContent = Zotero.locale.startsWith("vi")
+          ? `✓ Đã lưu ${saved} flashcard`
+          : `✓ Saved ${saved} flashcards`;
+        updateHidden(flashcardStatus, false);
+        updateHidden(vocabularyPicker, true);
+      });
+      vocabularyPicker.append(save);
+    }
+  }
   textarea.style.fontSize = `${getPref("fontSize")}px`;
   textarea.style.lineHeight = `${
     Number(getPref("lineHeight")) * Number(getPref("fontSize"))
@@ -155,6 +229,20 @@ export function buildReaderPopup(
   append(
     ztoolkit.UI.createElement(doc, "fragment", {
       children: [
+        {
+          tag: "div",
+          id: makeId("vocabulary-picker"),
+          classList: [
+            `${config.addonRef}-readerpopup`,
+            `${config.addonRef}-vocabulary-picker`,
+          ],
+          styles: {
+            display: "none",
+            padding: "8px 9px",
+            borderBottom: "1px solid var(--fill-quinary)",
+          },
+          ignoreIfExists: true,
+        },
         {
           tag: "div",
           id: makeId("flashcard-status"),
