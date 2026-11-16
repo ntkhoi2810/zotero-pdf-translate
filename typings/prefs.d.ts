@@ -21,6 +21,8 @@ declare namespace _ZoteroTypes {
       "enableNoteReplaceMode": boolean;
       "translateSource": string;
       "dictSource": string;
+      "flashcards.autoSave": boolean;
+      "flashcards.storageDirectory": string;
       "sourceLanguage": string;
       "targetLanguage": string;
       "fontSize": string;

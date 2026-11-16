@@ -9,6 +9,7 @@ import {
   putTranslateTaskAtHead,
 } from "../utils/task";
 import type { TranslationServices } from "../modules/services";
+import { openFlashcards } from "../modules/flashcards/window";
 
 //@ts-expect-error addon instance not typed
 const services = Zotero[config.addonInstance].data.translate
@@ -50,6 +51,7 @@ export class TranslatorPanel extends PluginCEBase {
     </menupopup>
   </menulist>
   <button id="translate" data-l10n-id="translate" />
+  <button id="flashcards" class="secondary-button" data-l10n-id="flashcards" />
 </hbox>
 <hbox id="language" align="center">
   <menulist id="langfrom" class="lang-menulist" native="true">
@@ -110,6 +112,7 @@ export class TranslatorPanel extends PluginCEBase {
   }
 
   init(): void {
+    this._queryID("flashcards")?.addEventListener("command", openFlashcards);
     // Services
     this._queryID("services")?.addEventListener("command", (e) => {
       const newService = (e.target as XUL.MenuList).value;

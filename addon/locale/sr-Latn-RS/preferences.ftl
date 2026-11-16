@@ -126,4 +126,13 @@ pref-about-version =
     .value = { $name }, verzija { $version }, izdanje { $time }
 pref-advanced-stripEmptyLines =
     .label = Ukloni prazne redove i tekst razmišljanja iz rezultata prevoda
+pref-flashcards = Kartice rečnika
+pref-flashcards-autoSave =
+    .label = Automatski sačuvaj uspešne pretrage jedne reči
+pref-flashcards-storage = Datoteka podataka
+pref-flashcards-browse =
+    .label = Izaberi fasciklu…
+pref-flashcards-hint = Lokalni JSON podaci; CSV izvoz je dostupan u prozoru kartica.
+pref-flashcards-open =
+    .label = Otvori kartice
 

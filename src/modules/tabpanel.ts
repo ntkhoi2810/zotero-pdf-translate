@@ -97,6 +97,9 @@ function onInit({ body, refresh }: { body: HTMLElement; refresh: () => void }) {
 }
 
 function buildExtraPanel(doc: Document) {
+  doc
+    .querySelector("#open-flashcards")
+    ?.addEventListener("click", () => addon.hooks.openFlashcards());
   doc.querySelector("#add-source")?.addEventListener("click", () => {
     const extraServices = getPref("extraEngines");
     const allServices = services.getAllServices();

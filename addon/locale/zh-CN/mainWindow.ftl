@@ -14,3 +14,5 @@ itemmenu-translateTitle =
     .label = 翻译标题
 itemmenu-translateAbstract =
     .label = 翻译摘要
+menu-flashcards =
+    .label = 词汇闪卡

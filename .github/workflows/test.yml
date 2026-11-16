@@ -2,8 +2,9 @@ name: Test
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,6 +27,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Zotero 10.0.8
+        run: |
+          wget -q -O /tmp/zotero.tar.bz2 https://download.zotero.org/client/release/10.0.8/Zotero-10.0.8_linux-x86_64.tar.bz2
+          tar -xjf /tmp/zotero.tar.bz2 -C /tmp
+          echo "ZOTERO_PLUGIN_ZOTERO_BIN_PATH=/tmp/Zotero_linux-x86_64/zotero" >> "$GITHUB_ENV"
+
       # The test bundle is built by esbuild, which does not typecheck
       - name: Typecheck tests
         run: npx tsc --noEmit -p test/tsconfig.json
@@ -34,3 +41,13 @@ jobs:
       # under Xvfb, and exits non-zero if any test fails
       - name: Run tests
         run: npm test
+
+      - name: Build installable plugin
+        run: npm run build
+
+      - name: Upload XPI
+        uses: actions/upload-artifact@v4
+        with:
+          name: zotero-pdf-translate-${{ github.sha }}
+          path: build/*.xpi
+          if-no-files-found: error

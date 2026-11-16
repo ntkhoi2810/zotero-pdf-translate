@@ -12,4 +12,6 @@ itemmenu-translateTitle =
     .label = Prevedi naslov
 itemmenu-translateAbstract =
     .label = Prevedi sažetak
+menu-flashcards =
+    .label = Kartice rečnika
 

@@ -1,5 +1,9 @@
 <linkset>
   <html:link rel="localization" href="__addonRef__-preferences.ftl" />
+  <html:link
+    rel="stylesheet"
+    href="chrome://__addonRef__/content/styles/preferences.css"
+  />
 </linkset>
 <vbox
   id="zotero-prefpane-__addonRef__"
@@ -175,6 +179,35 @@
         id="__addonRef__-wordServicesSecret"
         class="use-word-service"
       ></html:input>
+    </hbox>
+  </groupbox>
+  <groupbox>
+    <label><html:h2 data-l10n-id="pref-flashcards"></html:h2></label>
+    <checkbox
+      id="__addonRef__-flashcardsAutoSave"
+      data-l10n-id="pref-flashcards-autoSave"
+      native="true"
+      preference="__prefsPrefix__.flashcards.autoSave"
+    />
+    <hbox align="center" style="gap: 8px">
+      <label data-l10n-id="pref-flashcards-storage"></label>
+      <html:input
+        id="__addonRef__-flashcardStorageDirectory"
+        type="text"
+        readonly="readonly"
+        style="min-width: 360px; flex: 1"
+      ></html:input>
+      <button
+        id="__addonRef__-browseFlashcardStorage"
+        data-l10n-id="pref-flashcards-browse"
+      ></button>
+    </hbox>
+    <hbox align="center" style="gap: 8px">
+      <label data-l10n-id="pref-flashcards-hint"></label>
+      <button
+        id="__addonRef__-openFlashcards"
+        data-l10n-id="pref-flashcards-open"
+      ></button>
     </hbox>
   </groupbox>
   <groupbox>

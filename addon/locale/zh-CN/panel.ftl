@@ -27,3 +27,5 @@ copyResult =
     .label = 结果
 copyBoth =
     .label = 两者
+flashcards =
+    .label = 闪卡

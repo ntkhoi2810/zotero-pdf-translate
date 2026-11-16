@@ -1,6 +1,6 @@
 # ![Translate for Zotero](addon/chrome/content/icons/favicon.png)Translate for Zotero
 
-[![zotero target version](https://img.shields.io/badge/Zotero-7/8-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
+[![zotero target version](https://img.shields.io/badge/Zotero-10.0.8+-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
 [![Using Zotero Plugin Template](https://img.shields.io/badge/Using-Zotero%20Plugin%20Template-blue?style=flat-square&logo=github)](https://github.com/windingwind/zotero-plugin-template)
 
 _Translate for Zotero_, a.k.a. _Zotero PDF Translate_, is a [Zotero](https://www.zotero.org/) plugin.  
@@ -15,8 +15,8 @@ Translate PDF, EPub, webpage, metadata, annotations, notes to the target languag
 ## Install
 
 - Download the plugin (.xpi file) from below.
-  - [Latest Stable](https://github.com/windingwind/zotero-pdf-translate/releases/latest)
-  - [All Releases](https://github.com/windingwind/zotero-pdf-translate/releases)
+  - [Latest Stable](https://github.com/ntkhoi2810/zotero-pdf-translate/releases/latest)
+  - [All Releases](https://github.com/ntkhoi2810/zotero-pdf-translate/releases)
 
   _Note_ If you're using Firefox as your browser, right-click the `.xpi` and select "Save As.."
 
@@ -43,6 +43,7 @@ Open any PDF/EPub/webpage in the Zotero reader.
   ![](docs/res/standalone.jpg)
 
 - Dictionary for single word translation(v0.7.1).
+- Vocabulary flashcards: successful single-word dictionary lookups are saved locally as cards. Open them from Tools → Vocabulary Flashcards to review, edit, delete, or export UTF-8 CSV for Excel.
 - SentenceBySentence Translation(v1.1.0). After a translation, press `shift`+`P` and select `Translate Sentences`. _Only for en2zh and en2en now_. Thanks @MuiseDestiny
 - Since v2.2.0, the concat mode shortcut is ctrl (on Windows/Linux) or ⌘ (on macOS).
 

@@ -33,6 +33,8 @@ function task(raw = "Machine learning."): Required<TranslateTask> {
     silent: false,
     callerID: "test",
     processed: false,
+    wordLookup: false,
+    flashcardSaved: false,
   };
 }
 

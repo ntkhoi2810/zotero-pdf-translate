@@ -1,0 +1,36 @@
+#zotero-prefpane-__addonRef__ {
+  --translate-surface: light-dark(#ffffff, #29292d);
+  --translate-border: light-dark(#dedfdf, #444449);
+  --translate-muted: light-dark(#62656a, #aaaab1);
+  gap: 14px;
+  padding: 16px;
+}
+
+#zotero-prefpane-__addonRef__ groupbox {
+  margin: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--translate-border);
+  border-radius: 10px;
+  background: var(--translate-surface);
+}
+
+#zotero-prefpane-__addonRef__ h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+#zotero-prefpane-__addonRef__ hbox,
+#zotero-prefpane-__addonRef__ vbox {
+  gap: 6px;
+}
+
+#zotero-prefpane-__addonRef__ html|input {
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--translate-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}

@@ -27,3 +27,5 @@ copyResult =
     .label = Result
 copyBoth =
     .label = Both
+flashcards =
+    .label = Flashcard

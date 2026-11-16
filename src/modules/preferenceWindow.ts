@@ -9,6 +9,10 @@ import {
 } from "../utils/secret";
 import { createServiceSettingsDialog } from "../utils";
 import { services } from "./services";
+import {
+  getFlashcardFilePath,
+  migrateFlashcardStorage,
+} from "./flashcards/storage";
 
 export function registerPrefsWindow() {
   Zotero.PreferencePanes.register({
@@ -279,6 +283,36 @@ function buildPrefsPane() {
     ?.addEventListener("command", (e: Event) => {
       onPrefsEvents("setEnableAutoTagAnnotation");
     });
+
+  const pathInput = doc.querySelector(
+    `#${makeId("flashcardStorageDirectory")}`,
+  ) as HTMLInputElement;
+  if (pathInput) {
+    pathInput.value = getFlashcardFilePath();
+  }
+  doc
+    .querySelector(`#${makeId("browseFlashcardStorage")}`)
+    ?.addEventListener("command", async () => {
+      const win = addon.data.prefs.window!;
+      const targetDirectory = await new ztoolkit.FilePicker(
+        "Choose flashcard data folder",
+        "folder",
+        undefined,
+        undefined,
+        win,
+      ).open();
+      if (!targetDirectory) return;
+      try {
+        await migrateFlashcardStorage(targetDirectory);
+        setPref("flashcards.storageDirectory", targetDirectory);
+        pathInput.value = getFlashcardFilePath();
+      } catch (error) {
+        win.alert(`Could not move flashcard data.\n\n${String(error)}`);
+      }
+    });
+  doc
+    .querySelector(`#${makeId("openFlashcards")}`)
+    ?.addEventListener("command", () => addon.hooks.openFlashcards());
 }
 
 function updatePrefsPaneDefault() {

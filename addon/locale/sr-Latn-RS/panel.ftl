@@ -24,4 +24,6 @@ copyResult =
     .label = Prevod
 copyBoth =
     .label = Oboje
+flashcards =
+    .label = Kartice
 

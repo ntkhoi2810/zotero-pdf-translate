@@ -4,6 +4,7 @@ import { getPref } from "./prefs";
 import { getServiceSecret } from "./secret";
 import { config } from "../../package.json";
 import Addon from "../addon";
+import { isSingleWordText } from "./word";
 
 export interface TranslateTask {
   /**
@@ -90,6 +91,10 @@ export interface TranslateTask {
    * If the task is once processed.
    */
   processed?: boolean;
+  /** True when this task originated from the single-word dictionary flow. */
+  wordLookup?: boolean;
+  /** Prevent duplicate persistence when cache/fallback paths complete twice. */
+  flashcardSaved?: boolean;
 }
 
 export type TranslateTaskProcessor = (
@@ -331,21 +336,10 @@ export function addTranslateAbstractTask(
   }
 }
 
-const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
-
 function setDefaultService(task: TranslateTask) {
   if (getPref("enableDict")) {
-    let wordCount = 0;
-    for (const s of segmenter.segment(task.raw.trim())) {
-      if (s.isWordLike) {
-        if (wordCount >= 1) {
-          wordCount = 2;
-          break;
-        }
-        wordCount = 1;
-      }
-    }
-    if (wordCount === 1) {
+    if (isSingleWordText(task.raw)) {
+      task.wordLookup = true;
       task.service = getPref("dictSource") as string;
       task.candidateServices.push(getPref("translateSource") as string);
     } else {

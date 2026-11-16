@@ -1,0 +1,218 @@
+:root {
+  color-scheme: light dark;
+  --fc-bg: light-dark(#f7f7f5, #1d1d1f);
+  --fc-surface: light-dark(#ffffff, #28282b);
+  --fc-text: light-dark(#202124, #f4f4f5);
+  --fc-muted: light-dark(#6b6e73, #a6a6ad);
+  --fc-border: light-dark(#dedfdf, #414145);
+  --fc-accent: light-dark(#315fcb, #84a8ff);
+  --fc-danger: light-dark(#b42318, #ff8a82);
+}
+
+window {
+  background: var(--fc-bg);
+  color: var(--fc-text);
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+.flashcards-shell {
+  box-sizing: border-box;
+  max-width: 1040px;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 30px;
+}
+.flashcards-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--fc-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+.data-path {
+  max-width: 680px;
+  margin: 8px 0 0;
+  color: var(--fc-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.primary {
+  border-color: var(--fc-accent) !important;
+  background: var(--fc-accent) !important;
+  color: light-dark(white, #111) !important;
+}
+.error {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--fc-danger);
+  border-radius: 9px;
+  color: var(--fc-danger);
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 28px 0 18px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--fc-border);
+}
+.tabs button {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fc-muted);
+}
+.tabs button.active {
+  background: color-mix(in srgb, var(--fc-accent) 14%, transparent);
+  color: var(--fc-accent);
+}
+.list-toolbar,
+.review-toolbar,
+.review-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+#flashcard-search {
+  box-sizing: border-box;
+  width: min(480px, 80%);
+  padding: 9px 12px;
+  border: 1px solid var(--fc-border);
+  border-radius: 8px;
+  background: var(--fc-surface);
+  color: var(--fc-text);
+}
+.count,
+.empty {
+  color: var(--fc-muted);
+}
+.flashcard-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.flashcard-row {
+  border: 1px solid var(--fc-border);
+  border-radius: 10px;
+  background: var(--fc-surface);
+  overflow: hidden;
+}
+.flashcard-row-content {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.55fr) 1.6fr auto;
+  align-items: baseline;
+  gap: 18px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 0;
+  background: transparent;
+  color: var(--fc-text);
+  text-align: left;
+}
+.flashcard-row-content strong {
+  font-size: 16px;
+}
+.flashcard-row-content span {
+  white-space: pre-wrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.flashcard-row-content small {
+  color: var(--fc-muted);
+  white-space: nowrap;
+}
+.flashcard-editor {
+  display: grid;
+  gap: 10px;
+  padding: 0 18px 18px;
+}
+.flashcard-editor input,
+.flashcard-editor textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--fc-border);
+  border-radius: 7px;
+  background: var(--fc-bg);
+  color: var(--fc-text);
+}
+.flashcard-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.danger {
+  color: var(--fc-danger);
+}
+.review-view {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.review-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 360px;
+  margin: 18px 0;
+  padding: 42px;
+  border: 1px solid var(--fc-border);
+  border-radius: 16px;
+  background: var(--fc-surface);
+  color: var(--fc-text);
+  box-shadow: 0 10px 30px color-mix(in srgb, #000 8%, transparent);
+}
+.review-card strong {
+  font-size: clamp(28px, 6vw, 52px);
+  letter-spacing: -0.035em;
+}
+.review-card span {
+  max-width: 620px;
+  color: var(--fc-muted);
+  font-size: 16px;
+  white-space: pre-wrap;
+}
+#flashcard-review-meaning {
+  color: var(--fc-text);
+}
+.review-actions {
+  justify-content: center;
+}
+.review-actions button {
+  min-width: 130px;
+}
+@media (max-width: 650px) {
+  .flashcards-shell {
+    padding: 20px;
+  }
+  .flashcard-row-content {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+  .flashcards-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

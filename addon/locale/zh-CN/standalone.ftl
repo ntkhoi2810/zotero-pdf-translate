@@ -1,5 +1,7 @@
 add-source =
     .label = 添加源
+open-flashcards =
+    .label = 闪卡
 remove-source =
     .label = 移除
 pin-window =

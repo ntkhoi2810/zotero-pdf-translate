@@ -4,6 +4,8 @@ translate =
         [macos] ⌘
        *[other] Ctrl
     } + T
+flashcards =
+    .label = Flashcards
 
 swapLanguage =
     .tooltiptext = Swap Language

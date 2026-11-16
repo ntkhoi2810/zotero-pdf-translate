@@ -136,3 +136,12 @@ pref-about-version =
 
 pref-advanced-stripEmptyLines =
     .label = Rimuovi le righe vuote e pensieri dai risultati della traduzione
+pref-flashcards = Flashcard del vocabolario
+pref-flashcards-autoSave =
+    .label = Salva automaticamente le ricerche di una singola parola
+pref-flashcards-storage = File dati
+pref-flashcards-browse =
+    .label = Scegli cartella…
+pref-flashcards-hint = Dati JSON locali; esportazione CSV disponibile nella finestra flashcard.
+pref-flashcards-open =
+    .label = Apri Flashcard

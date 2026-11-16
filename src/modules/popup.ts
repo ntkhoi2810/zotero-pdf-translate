@@ -30,6 +30,9 @@ export function updateReaderPopup() {
   const addToNoteButton = popup?.querySelector(
     `#${makeId("addtonote")}`,
   ) as HTMLDivElement;
+  const flashcardStatus = popup?.querySelector(
+    `#${makeId("flashcard-status")}`,
+  ) as HTMLDivElement;
 
   const updateHidden = (elem: HTMLElement, hidden: boolean) => {
     if (hidden) {
@@ -44,6 +47,7 @@ export function updateReaderPopup() {
     updateHidden(translateButton, true);
     updateHidden(textarea, true);
     updateHidden(addToNoteButton, true);
+    updateHidden(flashcardStatus, true);
     return;
   }
   const task = getLastTranslateTask({ type: "text" });
@@ -100,6 +104,12 @@ export function updateReaderPopup() {
 
   textarea.hidden = hidePopupTextarea || !hideTranslateButton;
   textarea.value = task.result || task.raw;
+  if (flashcardStatus) {
+    flashcardStatus.textContent = Zotero.locale.startsWith("vi")
+      ? "✓ Đã lưu flashcard"
+      : "✓ Saved to flashcards";
+    updateHidden(flashcardStatus, !(task.wordLookup && task.flashcardSaved));
+  }
   textarea.style.fontSize = `${getPref("fontSize")}px`;
   textarea.style.lineHeight = `${
     Number(getPref("lineHeight")) * Number(getPref("fontSize"))
@@ -145,6 +155,21 @@ export function buildReaderPopup(
   append(
     ztoolkit.UI.createElement(doc, "fragment", {
       children: [
+        {
+          tag: "div",
+          id: makeId("flashcard-status"),
+          classList: [
+            `${config.addonRef}-readerpopup`,
+            `${config.addonRef}-flashcard-status`,
+          ],
+          styles: {
+            display: "none",
+            padding: "6px 9px",
+            color: "var(--color-accent-blue)",
+            fontSize: "12px",
+          },
+          ignoreIfExists: true,
+        },
         {
           tag: "div",
           id: makeId("audiobox"),

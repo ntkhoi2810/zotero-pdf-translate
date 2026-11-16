@@ -1,8 +1,33 @@
 translator-plugin-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  --translate-surface: light-dark(#ffffff, #29292d);
+  --translate-surface-subtle: light-dark(#f6f7f7, #242427);
+  --translate-border: light-dark(#dedfdf, #444449);
+  --translate-accent: light-dark(#315fcb, #84a8ff);
+  gap: 10px;
   height: var(--details-height, 450px);
+  color-scheme: light dark;
+}
+
+translator-plugin-panel > hbox {
+  gap: 7px;
+}
+
+translator-plugin-panel button,
+translator-plugin-panel menulist {
+  min-height: 30px;
+  border-radius: 7px;
+}
+
+translator-plugin-panel #__addonRef__-translate {
+  border-color: var(--translate-accent);
+  background: var(--translate-accent);
+  color: light-dark(white, #111);
+}
+
+translator-plugin-panel .secondary-button {
+  min-width: auto;
 }
 
 translator-plugin-panel linkset {
@@ -10,7 +35,7 @@ translator-plugin-panel linkset {
 }
 
 translator-plugin-panel .separator {
-  border-top: var(--material-border);
+  border-top: 1px solid var(--translate-border);
 }
 
 translator-plugin-panel .icon-button {
@@ -34,6 +59,9 @@ translator-plugin-panel .lang-menulist {
 translator-plugin-panel editable-text {
   flex: 1;
   min-height: 100px;
+  border: 1px solid var(--translate-border);
+  border-radius: 9px;
+  background: var(--translate-surface);
 }
 
 /* Minimal styles for math-textbox to match editable-text without intruding */
@@ -68,6 +96,7 @@ translator-plugin-panel .editor-container {
   min-height: 213px;
   flex-direction: column;
   position: relative;
+  gap: 4px;
 }
 
 translator-plugin-panel .draggable-container {
@@ -89,6 +118,10 @@ translator-plugin-panel .options-container {
   column-gap: 8px;
   row-gap: 2px;
   width: inherit;
+  padding: 8px;
+  border: 1px solid var(--translate-border);
+  border-radius: 9px;
+  background: var(--translate-surface-subtle);
 }
 
 translator-plugin-panel .options-grid:not([hidden]) {

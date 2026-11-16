@@ -10,5 +10,6 @@ export * from "./task";
 export * from "./thinkingParams";
 export * from "./wait";
 export * from "./window";
+export * from "./word";
 export * from "./ztoolkit";
 export * from "./settingsDialog";

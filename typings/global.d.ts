@@ -19,6 +19,24 @@ declare const addon: import("../src/addon").default;
 
 declare const __env__: "production" | "development";
 
+declare const PathUtils: {
+  join: (...parts: string[]) => string;
+};
+
+declare const IOUtils: {
+  exists: (path: string) => Promise<boolean>;
+  readUTF8: (path: string) => Promise<string>;
+  writeUTF8: (
+    path: string,
+    contents: string,
+    options?: { tmpPath?: string },
+  ) => Promise<void>;
+  makeDirectory: (
+    path: string,
+    options?: { createAncestors?: boolean; ignoreExisting?: boolean },
+  ) => Promise<void>;
+};
+
 declare class XULElementBase extends HTMLElement {
   get content(): DocumentFragment;
   init(): void;

@@ -50,6 +50,7 @@ import { YoudaoZhiyun } from "./youdaozhiyun";
 import { YoudaoZhiyunLLM } from "./youdaozhiyunllm";
 import { DeepLCustom } from "./deeplcustom";
 import { DeepLX } from "./deeplx";
+import { saveFlashcardFromTask } from "../flashcards/storage";
 
 const register: TranslateService[] = [
   Aliyun,
@@ -470,6 +471,20 @@ export class TranslationServices {
           break;
         default:
           break;
+      }
+      try {
+        if (await saveFlashcardFromTask(task)) {
+          addon.hooks.onReaderPopupRefresh();
+        }
+      } catch (error) {
+        ztoolkit.log("Failed to save flashcard", error);
+        new ztoolkit.ProgressWindow("Flashcards")
+          .createLine({
+            text: `Could not save this word: ${String(error)}`,
+            progress: 100,
+            type: "fail",
+          })
+          .show();
       }
     }
     return success;

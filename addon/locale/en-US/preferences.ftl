@@ -62,6 +62,15 @@ pref-service-renameServices-hint =
     .value = Show Services to rename or view mappings:
 
 pref-interface = User Interface
+pref-flashcards = Vocabulary Flashcards
+pref-flashcards-autoSave =
+    .label = Automatically save successful single-word lookups
+pref-flashcards-storage = Data file
+pref-flashcards-browse =
+    .label = Choose Folder…
+pref-flashcards-hint = Stored as local JSON; export a UTF-8 CSV from the flashcard window.
+pref-flashcards-open =
+    .label = Open Flashcards
 
 pref-interface-fontSize =
     .value = Font Size

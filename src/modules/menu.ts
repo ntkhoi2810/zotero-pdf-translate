@@ -5,6 +5,7 @@ import {
   addTranslateTitleTask,
   TranslateTask,
 } from "../utils/task";
+import { openFlashcards } from "./flashcards/window";
 
 export function registerMenu() {
   const menuIcon = `chrome://${config.addonRef}/content/icons/favicon.png`;
@@ -61,6 +62,19 @@ export function registerMenu() {
             ),
           );
         },
+      },
+    ],
+  });
+  Zotero.MenuManager.registerMenu({
+    menuID: `${config.addonRef}-flashcards`,
+    pluginID: config.addonID,
+    target: "main/menubar/tools",
+    menus: [
+      {
+        menuType: "menuitem",
+        l10nID: `${config.addonRef}-menu-flashcards`,
+        icon: menuIcon,
+        onCommand: () => openFlashcards(),
       },
     ],
   });

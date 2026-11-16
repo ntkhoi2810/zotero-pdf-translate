@@ -136,4 +136,13 @@ pref-about-version =
 
 pref-advanced-stripEmptyLines =
     .label = 从翻译结果中删除空行和思考内容
+pref-flashcards = 词汇闪卡
+pref-flashcards-autoSave =
+    .label = 自动保存成功的单词查询
+pref-flashcards-storage = 数据文件
+pref-flashcards-browse =
+    .label = 选择文件夹…
+pref-flashcards-hint = 数据以本地 JSON 保存；可在闪卡窗口导出 CSV。
+pref-flashcards-open =
+    .label = 打开闪卡
 

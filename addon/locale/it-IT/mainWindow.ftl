@@ -14,3 +14,5 @@ itemmenu-translateTitle =
     .label = Traduci Titolo
 itemmenu-translateAbstract =
     .label = Traduci Abstract
+menu-flashcards =
+    .label = Flashcard del vocabolario

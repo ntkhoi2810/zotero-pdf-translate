@@ -8,6 +8,7 @@ import {
   SettingsDialogHelper,
   ProgressWindowHelper,
   ClipboardHelper,
+  FilePickerHelper,
   makeHelperTool,
   unregister,
 } from "zotero-plugin-toolkit";
@@ -48,6 +49,7 @@ export class MyToolkit extends BasicTool {
   SettingsDialog: typeof SettingsDialogHelper;
   ProgressWindow: typeof ProgressWindowHelper;
   Clipboard: typeof ClipboardHelper;
+  FilePicker: typeof FilePickerHelper;
 
   constructor() {
     super();
@@ -59,6 +61,7 @@ export class MyToolkit extends BasicTool {
     this.SettingsDialog = makeHelperTool(SettingsDialogHelper, this);
     this.ProgressWindow = makeHelperTool(ProgressWindowHelper, this);
     this.Clipboard = makeHelperTool(ClipboardHelper, this);
+    this.FilePicker = makeHelperTool(FilePickerHelper, this);
   }
 
   unregisterAll() {

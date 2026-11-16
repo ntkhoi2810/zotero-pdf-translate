@@ -1,5 +1,7 @@
 add-source =
     .label = Dodaj izvor
+open-flashcards =
+    .label = Kartice
 remove-source =
     .label = Ukloni
 pin-window =

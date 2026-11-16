@@ -26,6 +26,10 @@ import { registerExtraColumns } from "./modules/itemTree";
 import { registerShortcuts } from "./modules/shortcuts";
 import { registerItemPaneInfoRows } from "./modules/infoBox";
 import { registerCustomFields } from "./modules/fields";
+import {
+  initializeFlashcardWindow,
+  openFlashcards,
+} from "./modules/flashcards/window";
 
 async function onStartup() {
   await Promise.all([
@@ -253,6 +257,10 @@ function onReaderTabPanelRefresh() {
   updateReaderTabPanels();
 }
 
+function onFlashcardsLoad(win: Window) {
+  initializeFlashcardWindow(win);
+}
+
 // Add your hooks here. For element click, etc.
 // Keep in mind hooks only do dispatch. Don't add code that does real jobs in hooks.
 // Otherwise the code would be hard to read and maintain.
@@ -270,4 +278,6 @@ export default {
   onReaderPopupShow,
   onReaderPopupRefresh,
   onReaderTabPanelRefresh,
+  onFlashcardsLoad,
+  openFlashcards,
 };
