@@ -6,18 +6,55 @@ import { addTranslateTask, getLastTranslateTask } from "../utils/task";
 import { slice } from "../utils/str";
 import { saveVocabularySensesFromTask } from "./flashcards/storage";
 import type { VocabularyLookup } from "./dictionary/model";
+import {
+  getResponsivePopupWidth,
+  READER_POPUP_STYLES,
+} from "./readerPopupStyles";
 
 function ensurePopupStyles(doc: Document) {
   const id = `${config.addonRef}-reader-popup-styles`;
   if (doc.getElementById(id)) return;
-  const link = doc.createElementNS(
+  const style = doc.createElementNS(
     "http://www.w3.org/1999/xhtml",
-    "link",
-  ) as HTMLLinkElement;
-  link.id = id;
-  link.rel = "stylesheet";
-  link.href = `chrome://${config.addonRef}/content/styles/readerPopup.css`;
-  doc.head?.append(link);
+    "style",
+  ) as HTMLStyleElement;
+  style.id = id;
+  style.textContent = READER_POPUP_STYLES;
+  (doc.head || doc.documentElement).append(style);
+}
+
+function setVocabularyPopupMode(
+  popup: HTMLDivElement,
+  picker: HTMLDivElement,
+  enabled: boolean,
+) {
+  popup.classList.toggle(`${config.addonRef}-vocabulary-mode`, enabled);
+  if (!enabled) {
+    popup.style.removeProperty("width");
+    popup.style.removeProperty("max-width");
+    popup.style.removeProperty("overflow");
+    return;
+  }
+
+  const viewportWidth =
+    popup.ownerDocument.defaultView?.innerWidth ||
+    popup.ownerDocument.documentElement.clientWidth ||
+    440;
+  const width = getResponsivePopupWidth(viewportWidth);
+  popup.style.width = `${width}px`;
+  popup.style.maxWidth = "calc(100vw - 24px)";
+  popup.style.overflow = "hidden";
+
+  // Inline constraints are a final fallback for reader documents that reject
+  // injected styles. Content must never force the selection popup off-screen.
+  picker.style.boxSizing = "border-box";
+  picker.style.width = "100%";
+  picker.style.minWidth = "0";
+  picker.style.maxWidth = "100%";
+  picker.style.maxHeight = "calc(100vh - 100px)";
+  picker.style.overflowX = "hidden";
+  picker.style.overflowY = "auto";
+  picker.style.whiteSpace = "normal";
 }
 
 export function updateReaderPopup() {
@@ -61,6 +98,7 @@ export function updateReaderPopup() {
   };
 
   if (!enablePopup) {
+    setVocabularyPopupMode(popup, vocabularyPicker, false);
     updateHidden(audiobox, true);
     updateHidden(translateButton, true);
     updateHidden(textarea, true);
@@ -71,6 +109,7 @@ export function updateReaderPopup() {
   }
   const task = getLastTranslateTask({ type: "text" });
   if (!task) {
+    setVocabularyPopupMode(popup, vocabularyPicker, false);
     return;
   }
   popup.setAttribute("translate-task-id", task.id);
@@ -137,12 +176,15 @@ export function updateReaderPopup() {
       updateHidden(flashcardStatus, !(task.wordLookup && task.flashcardSaved));
     }
   }
+  let vocabularyMode = false;
   if (vocabularyPicker) {
     const lookup = (
       task as typeof task & { vocabularyLookup?: VocabularyLookup }
     ).vocabularyLookup;
     vocabularyPicker.replaceChildren();
     const isVocabulary = !!lookup?.senses.length;
+    vocabularyMode = isVocabulary;
+    setVocabularyPopupMode(popup, vocabularyPicker, isVocabulary);
     updateHidden(vocabularyPicker, !isVocabulary);
     if (isVocabulary) textarea.hidden = true;
     if (lookup?.senses.length) {
@@ -155,7 +197,11 @@ export function updateReaderPopup() {
         ) as HTMLElementTagNameMap[K];
       const header = create("header");
       header.className = `${config.addonRef}-vocab-header`;
+      header.style.cssText =
+        "display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;min-width:0;margin-bottom:10px";
       const heading = create("div");
+      heading.style.cssText =
+        "display:flex;min-width:0;flex:1 1 200px;flex-direction:column;gap:2px";
       const title = create("strong");
       title.textContent = lookup.word;
       const subtitle = create("span");
@@ -165,6 +211,8 @@ export function updateReaderPopup() {
       heading.append(title, subtitle);
       const badge = create("span");
       badge.className = `${config.addonRef}-status-badge`;
+      badge.style.cssText =
+        "flex:0 1 auto;max-width:100%;padding:4px 7px;overflow-wrap:anywhere;border-radius:999px";
       badge.textContent =
         lookup.normalizationStatus === "normalized"
           ? vi
@@ -179,6 +227,8 @@ export function updateReaderPopup() {
       if (lookup.llmError) {
         const errorBox = create("div");
         errorBox.className = `${config.addonRef}-vocab-error`;
+        errorBox.style.cssText =
+          "display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;min-width:0;margin-bottom:9px;padding:8px 10px;overflow-wrap:anywhere;border:1px solid var(--color-red50,#d38b84);border-radius:8px";
         const message = create("span");
         message.textContent = `${vi ? "Không thể chuẩn hóa" : "Normalization failed"}: ${lookup.llmError}`;
         const retry = create("button");
@@ -198,6 +248,8 @@ export function updateReaderPopup() {
         });
         const actions = create("span");
         actions.className = `${config.addonRef}-vocab-error-actions`;
+        actions.style.cssText =
+          "display:flex;flex:0 1 auto;flex-wrap:wrap;gap:5px";
         const configure = create("button");
         configure.type = "button";
         configure.textContent = vi ? "Cấu hình" : "Configure";
@@ -217,6 +269,8 @@ export function updateReaderPopup() {
           "label",
         );
         label.className = `${config.addonRef}-sense-card`;
+        label.style.cssText =
+          "display:grid;grid-template-columns:auto minmax(0,1fr);align-items:flex-start;gap:9px;box-sizing:border-box;width:100%;min-width:0;margin:7px 0;padding:10px;overflow:hidden;border:1px solid var(--fill-quinary,#dfe3e8);border-radius:10px;white-space:normal";
         const checkbox = doc.createElementNS(
           "http://www.w3.org/1999/xhtml",
           "input",
@@ -227,23 +281,33 @@ export function updateReaderPopup() {
         if (checkbox.checked) {
           selected.add(sense.id);
           label.classList.add("selected");
+          label.style.borderColor = "var(--color-accent-blue, #315fcb)";
+          label.style.boxShadow = "0 0 0 1px var(--color-accent-blue, #315fcb)";
         }
         const content = create("span");
         content.className = `${config.addonRef}-sense-content`;
+        content.style.cssText =
+          "display:flex;min-width:0;max-width:100%;flex-direction:column;gap:4px;overflow-wrap:anywhere;word-break:break-word;white-space:normal;line-height:1.35";
         const meta = create("span");
         meta.className = `${config.addonRef}-sense-meta`;
+        meta.style.cssText =
+          "display:block;font-size:11px;font-weight:600;text-transform:uppercase";
         meta.textContent = `${sense.partOfSpeech} · ${
           sense.cefrLevel === "unknown" ? "CEFR ?" : `~${sense.cefrLevel}`
         }${sense.pronunciation ? ` · ${sense.pronunciation}` : ""}`;
         const meaningVi = create("strong");
+        meaningVi.style.display = "block";
         meaningVi.textContent =
           sense.meaningVi ||
           (vi ? "Chưa có nghĩa Việt" : "No Vietnamese meaning");
         const meaningEn = create("span");
+        meaningEn.style.display = "block";
         meaningEn.textContent = sense.meaningEn;
         content.append(meta, meaningVi, meaningEn);
         if (sense.example) {
           const example = create("em");
+          example.style.cssText =
+            "display:block;padding-left:8px;overflow-wrap:anywhere;border-left:2px solid var(--fill-quinary,#dfe3e8)";
           example.textContent = sense.example;
           content.append(example);
         }
@@ -251,6 +315,12 @@ export function updateReaderPopup() {
         vocabularyPicker.append(label);
         checkbox.addEventListener("change", () => {
           label.classList.toggle("selected", checkbox.checked);
+          label.style.borderColor = checkbox.checked
+            ? "var(--color-accent-blue, #315fcb)"
+            : "var(--fill-quinary, #dfe3e8)";
+          label.style.boxShadow = checkbox.checked
+            ? "0 0 0 1px var(--color-accent-blue, #315fcb)"
+            : "none";
           if (checkbox.checked) selected.add(sense.id);
           else selected.delete(sense.id);
           vocabularyPicker
@@ -277,6 +347,8 @@ export function updateReaderPopup() {
         "button",
       ) as HTMLButtonElement;
       save.className = `toolbar-button wide-button ${config.addonRef}-save-senses`;
+      save.style.cssText =
+        "box-sizing:border-box;width:100%;max-width:100%;margin-top:4px;overflow:hidden;text-overflow:ellipsis";
       save.disabled = !normalized || selected.size === 0;
       save.textContent = vi
         ? `Lưu ${selected.size} nghĩa`
@@ -298,6 +370,8 @@ export function updateReaderPopup() {
 
       const source = create("a");
       source.className = `${config.addonRef}-vocab-source`;
+      source.style.cssText =
+        "display:block;max-width:100%;margin-top:9px;overflow-wrap:anywhere;text-align:center;text-decoration:none";
       source.href = lookup.sourceUrl;
       source.target = "_blank";
       source.rel = "noreferrer";
@@ -318,7 +392,7 @@ export function updateReaderPopup() {
     updateHidden(addToNoteButton, true);
   }
 
-  updatePopupSize(popup, textarea);
+  if (!vocabularyMode) updatePopupSize(popup, textarea);
 }
 
 export function buildReaderPopup(
@@ -329,7 +403,6 @@ export function buildReaderPopup(
   const popup = doc.querySelector(".selection-popup") as HTMLDivElement;
   ensurePopupStyles(doc);
   addon.data.popup.currentPopup = popup;
-  popup.style.maxWidth = "none";
   popup.setAttribute(
     `${config.addonRef}-prefix`,
     `${config.addonRef}-${reader._instanceID}`,
