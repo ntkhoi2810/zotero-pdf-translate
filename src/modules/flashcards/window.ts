@@ -88,6 +88,30 @@ export async function initializeFlashcardWindow(win: Window) {
       "http://www.w3.org/1999/xhtml",
       tag,
     ) as HTMLElementTagNameMap[K];
+  const vi = Zotero.locale.toLowerCase().startsWith("vi");
+  const formatSense = (
+    sense: NonNullable<Flashcard["senses"]>[number],
+    index: number,
+  ) =>
+    [
+      `${index + 1}. [${sense.partOfSpeech}]${
+        sense.cefrLevel === "unknown" ? "" : ` · ${sense.cefrLevel}`
+      }`,
+      sense.meaningVi,
+      sense.meaningEn,
+      sense.example ? `${vi ? "Ví dụ" : "Example"}: ${sense.example}` : "",
+      sense.synonyms?.length
+        ? `${vi ? "Đồng nghĩa" : "Synonyms"}: ${sense.synonyms.join(", ")}`
+        : "",
+      sense.antonyms?.length
+        ? `${vi ? "Trái nghĩa" : "Antonyms"}: ${sense.antonyms.join(", ")}`
+        : "",
+      sense.tags?.length
+        ? `${vi ? "Nhãn" : "Labels"}: ${sense.tags.join(", ")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
   const listView = query<HTMLElement>("#flashcard-list-view");
   const reviewView = query<HTMLElement>("#flashcard-review-view");
   const search = query<HTMLInputElement>("#flashcard-search");
@@ -129,12 +153,7 @@ export async function initializeFlashcardWindow(win: Window) {
       .join("\n");
     query<HTMLElement>("#flashcard-review-meaning").textContent = [
       senses.length && !card.meaningEdited
-        ? senses
-            .map(
-              (sense, index) =>
-                `${index + 1}. [${sense.partOfSpeech}] ~${sense.cefrLevel}\n${sense.meaningVi}\n${sense.meaningEn}${sense.example ? `\n${sense.example}` : ""}`,
-            )
-            .join("\n\n")
+        ? senses.map(formatSense).join("\n\n")
         : card.meaning,
     ]
       .filter(Boolean)
@@ -228,9 +247,23 @@ export async function initializeFlashcardWindow(win: Window) {
 
   const renderList = () => {
     const term = search.value.normalize("NFKC").trim().toLocaleLowerCase();
-    state.filtered = state.cards.filter((card) =>
-      `${card.word}\n${card.meaning}`.toLocaleLowerCase().includes(term),
-    );
+    state.filtered = state.cards.filter((card) => {
+      const structured = (card.senses || [])
+        .flatMap((sense) => [
+          sense.partOfSpeech,
+          sense.pronunciation,
+          sense.meaningEn,
+          sense.meaningVi,
+          sense.example,
+          ...(sense.synonyms || []),
+          ...(sense.antonyms || []),
+          ...(sense.tags || []),
+        ])
+        .join("\n");
+      return `${card.word}\n${card.meaning}\n${structured}`
+        .toLocaleLowerCase()
+        .includes(term);
+    });
     count.textContent = text.count(state.filtered.length);
     list.replaceChildren(...state.filtered.map(createCardRow));
     empty.hidden = state.filtered.length > 0;

@@ -39,6 +39,8 @@ export interface Flashcard {
   sourceUrl?: string;
   sourceLicense?: string;
   llmService?: string;
+  normalizationVersion?: number;
+  normalizationStatus?: VocabularyLookup["normalizationStatus"];
 }
 
 interface FlashcardDatabase {
@@ -335,10 +337,20 @@ export async function saveVocabularySensesFromTask(
     const item = task.itemId ? Zotero.Items.get(task.itemId) : false;
     const topItem = item ? Zotero.Items.getTopLevel([item])[0] : false;
     const structured = {
-      senses: selected,
+      // Keep the flashcard schema aligned with the normalized API model. Copy
+      // every sense field (including source metadata, synonyms, antonyms and
+      // tags) instead of rebuilding a smaller, lossy flashcard shape.
+      senses: selected.map((sense) => ({
+        ...sense,
+        synonyms: [...sense.synonyms],
+        antonyms: [...sense.antonyms],
+        tags: [...sense.tags],
+      })),
       sourceUrl: lookup.sourceUrl,
       sourceLicense: lookup.sourceLicense,
       llmService: lookup.llmService,
+      normalizationVersion: lookup.normalizationVersion,
+      normalizationStatus: lookup.normalizationStatus,
     };
     if (existing) {
       existing.lastSeenAt = now;
@@ -430,6 +442,10 @@ export function flashcardsToCSV(cards: Flashcard[]) {
       sense?.meaningVi || "",
       sense?.example || "",
       sense?.cefrLevel || "unknown",
+      sense?.cefrEstimated ?? "",
+      sense?.definitionOriginal || "",
+      sense?.partOfSpeechSource || "",
+      sense?.pronunciationSource || "",
       sense?.exampleSource || "",
       (sense?.synonyms || []).join("; "),
       (sense?.antonyms || []).join("; "),
@@ -447,6 +463,8 @@ export function flashcardsToCSV(cards: Flashcard[]) {
       card.sourceUrl || "",
       card.sourceLicense || "",
       card.llmService || "",
+      card.normalizationVersion ?? "",
+      card.normalizationStatus || "",
     ]);
   });
   const rows = [
@@ -457,7 +475,11 @@ export function flashcardsToCSV(cards: Flashcard[]) {
       "definition_english",
       "definition_vietnamese",
       "example_english",
+      "cefr_level",
       "cefr_estimated",
+      "definition_original",
+      "part_of_speech_source",
+      "pronunciation_source",
       "example_source",
       "synonyms",
       "antonyms",
@@ -475,6 +497,8 @@ export function flashcardsToCSV(cards: Flashcard[]) {
       "dictionary_source",
       "dictionary_license",
       "llm_service",
+      "normalization_version",
+      "normalization_status",
     ],
     ...dataRows,
   ];

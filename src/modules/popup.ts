@@ -2,10 +2,14 @@ import { SVGIcon } from "../utils/config";
 import { config } from "../../package.json";
 import { getString } from "../utils/locale";
 import { getPref, setPref } from "../utils/prefs";
-import { addTranslateTask, getLastTranslateTask } from "../utils/task";
+import {
+  addTranslateTask,
+  getLastTranslateTask,
+  type TranslateTask,
+} from "../utils/task";
 import { slice } from "../utils/str";
 import { saveVocabularySensesFromTask } from "./flashcards/storage";
-import type { VocabularyLookup } from "./dictionary/model";
+import type { VocabularyLookup, VocabularySense } from "./dictionary/model";
 import {
   getResponsivePopupWidth,
   READER_POPUP_STYLES,
@@ -52,9 +56,379 @@ function setVocabularyPopupMode(
   picker.style.minWidth = "0";
   picker.style.maxWidth = "100%";
   picker.style.maxHeight = "calc(100vh - 100px)";
-  picker.style.overflowX = "hidden";
-  picker.style.overflowY = "auto";
+  picker.style.overflow = "hidden";
   picker.style.whiteSpace = "normal";
+}
+
+const HTML_NS = "http://www.w3.org/1999/xhtml";
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+const createHTML = <K extends keyof HTMLElementTagNameMap>(
+  doc: Document,
+  tag: K,
+) => doc.createElementNS(HTML_NS, tag) as HTMLElementTagNameMap[K];
+
+function sharedPronunciation(lookup: VocabularyLookup) {
+  const pronunciations = new Set(
+    lookup.senses.map((sense) => sense.pronunciation.trim()),
+  );
+  return pronunciations.size === 1 ? [...pronunciations][0] : "";
+}
+
+function renderVocabularyHeader(
+  doc: Document,
+  word: string,
+  lookup: VocabularyLookup | undefined,
+  vi: boolean,
+  loading: boolean,
+) {
+  const header = createHTML(doc, "header");
+  header.className = `${config.addonRef}-vocab-head`;
+
+  const row1 = createHTML(doc, "div");
+  row1.className = `${config.addonRef}-vocab-row1`;
+  const identity = createHTML(doc, "div");
+  identity.className = `${config.addonRef}-vocab-identity`;
+  const title = createHTML(doc, "strong");
+  title.className = `${config.addonRef}-vocab-word`;
+  title.textContent = word;
+  identity.append(title);
+  const pronunciation = lookup ? sharedPronunciation(lookup) : "";
+  if (pronunciation) {
+    const ipa = createHTML(doc, "span");
+    ipa.className = `${config.addonRef}-vocab-ipa`;
+    ipa.textContent = pronunciation;
+    identity.append(ipa);
+  }
+
+  const chip = createHTML(doc, "span");
+  chip.className = `${config.addonRef}-status-chip`;
+  const dot = createHTML(doc, "span");
+  dot.className = `${config.addonRef}-status-dot`;
+  dot.setAttribute("aria-hidden", "true");
+  const chipText = createHTML(doc, "span");
+  if (loading) {
+    chip.classList.add("is-loading");
+    chipText.textContent = vi ? "Đang chuẩn hóa…" : "Normalizing…";
+  } else if (lookup?.normalizationStatus === "normalized") {
+    chip.classList.add("is-normalized");
+    chipText.textContent = vi ? "AI chuẩn hóa" : "AI normalized";
+  } else if (lookup?.normalizationStatus === "error") {
+    chip.classList.add("is-error");
+    chipText.textContent = vi ? "Lỗi chuẩn hóa" : "Normalization error";
+  } else {
+    chip.classList.add("is-raw");
+    chipText.textContent = vi ? "Dữ liệu thô" : "Raw data";
+  }
+  chip.append(dot, chipText);
+  row1.append(identity, chip);
+
+  const row2 = createHTML(doc, "div");
+  row2.className = `${config.addonRef}-vocab-row2`;
+  const hint = createHTML(doc, "span");
+  hint.className = `${config.addonRef}-vocab-hint`;
+  hint.textContent = vi ? "Chọn tối đa 2 nghĩa" : "Select up to 2 meanings";
+  const counter = createHTML(doc, "span");
+  counter.className = `${config.addonRef}-vocab-counter`;
+  counter.dataset.role = "counter";
+  counter.setAttribute("aria-live", "polite");
+  counter.textContent = "0 / 2";
+  row2.append(hint, counter);
+  header.append(row1, row2);
+  return header;
+}
+
+function renderVocabularySkeleton(doc: Document) {
+  const fragment = doc.createDocumentFragment();
+  for (let cardIndex = 0; cardIndex < 3; cardIndex++) {
+    const card = createHTML(doc, "div");
+    card.className = `${config.addonRef}-skeleton-card`;
+    card.setAttribute("aria-hidden", "true");
+    for (let lineIndex = 0; lineIndex < 3; lineIndex++) {
+      const line = createHTML(doc, "span");
+      line.className = `${config.addonRef}-skeleton-line`;
+      card.append(line);
+    }
+    fragment.append(card);
+  }
+  return fragment;
+}
+
+function renderVocabularyError(
+  doc: Document,
+  task: TranslateTask,
+  lookup: VocabularyLookup,
+  vi: boolean,
+) {
+  const errorBox = createHTML(doc, "div");
+  errorBox.className = `${config.addonRef}-vocab-error`;
+  const dot = createHTML(doc, "span");
+  dot.className = `${config.addonRef}-error-dot`;
+  dot.setAttribute("aria-hidden", "true");
+  const message = createHTML(doc, "span");
+  message.textContent = `${vi ? "Không thể chuẩn hóa" : "Normalization failed"}: ${lookup.llmError}`;
+  const actions = createHTML(doc, "span");
+  actions.className = `${config.addonRef}-vocab-error-actions`;
+  const retry = createHTML(doc, "button");
+  retry.type = "button";
+  retry.className = `${config.addonRef}-vocab-error-action is-primary`;
+  retry.textContent = vi ? "Thử lại" : "Retry";
+  retry.addEventListener("click", async () => {
+    retry.disabled = true;
+    retry.textContent = vi ? "Đang xử lý…" : "Working…";
+    task.status = "waiting";
+    task.result = "";
+    delete (task as TranslateTask & { vocabularyLookup?: VocabularyLookup })
+      .vocabularyLookup;
+    await addon.hooks.onTranslate(task, {
+      noCheckZoteroItemLanguage: true,
+      noCache: true,
+    });
+  });
+  const configure = createHTML(doc, "button");
+  configure.type = "button";
+  configure.className = `${config.addonRef}-vocab-error-action`;
+  configure.textContent = vi ? "Cấu hình" : "Configure";
+  configure.addEventListener("click", () => {
+    Zotero.Utilities.Internal.openPreferences(config.addonID);
+  });
+  actions.append(retry, configure);
+  errorBox.append(dot, message, actions);
+  return errorBox;
+}
+
+function createCheckmark(doc: Document) {
+  const check = createHTML(doc, "span");
+  check.className = `${config.addonRef}-check`;
+  check.setAttribute("aria-hidden", "true");
+  const mark = createHTML(doc, "span");
+  mark.className = `${config.addonRef}-check-mark`;
+  const svg = doc.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("fill", "none");
+  const path = doc.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", "M3.5 8.2 6.6 11.2 12.7 4.9");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  svg.append(path);
+  mark.append(svg);
+  check.append(mark);
+  return check;
+}
+
+interface SenseCardControl {
+  card: HTMLLabelElement;
+  input: HTMLInputElement;
+  sense: VocabularySense;
+}
+
+function renderSenseCard(
+  doc: Document,
+  sense: VocabularySense,
+  index: number,
+  pronunciationInHeader: boolean,
+  normalized: boolean,
+): SenseCardControl {
+  const card = createHTML(doc, "label");
+  card.className = `${config.addonRef}-sense-card`;
+  card.style.setProperty("--zpt-card-index", `${Math.min(index, 4)}`);
+  const input = createHTML(doc, "input");
+  input.className = `${config.addonRef}-sense-input`;
+  input.type = "checkbox";
+  input.checked = normalized && index < 2;
+
+  const content = createHTML(doc, "span");
+  content.className = `${config.addonRef}-sense-content`;
+  const meta = createHTML(doc, "span");
+  meta.className = `${config.addonRef}-sense-meta`;
+  const partOfSpeech = createHTML(doc, "span");
+  partOfSpeech.textContent = sense.partOfSpeech;
+  meta.append(partOfSpeech);
+  if (sense.cefrLevel !== "unknown") {
+    const separator = createHTML(doc, "span");
+    separator.textContent = "·";
+    separator.setAttribute("aria-hidden", "true");
+    const cefr = createHTML(doc, "span");
+    cefr.className = `${config.addonRef}-cefr-chip`;
+    cefr.textContent = sense.cefrLevel;
+    meta.append(separator, cefr);
+  }
+  if (sense.pronunciation && !pronunciationInHeader) {
+    const separator = createHTML(doc, "span");
+    separator.textContent = "·";
+    separator.setAttribute("aria-hidden", "true");
+    const ipa = createHTML(doc, "span");
+    ipa.textContent = sense.pronunciation;
+    meta.append(separator, ipa);
+  }
+  const meaningVi = createHTML(doc, "span");
+  meaningVi.className = `${config.addonRef}-sense-meaning-vi`;
+  meaningVi.textContent = sense.meaningVi || "Chưa có nghĩa tiếng Việt phù hợp";
+  const meaningEn = createHTML(doc, "span");
+  meaningEn.className = `${config.addonRef}-sense-meaning-en`;
+  meaningEn.textContent = sense.meaningEn;
+  content.append(meta, meaningVi, meaningEn);
+  if (sense.example) {
+    const example = createHTML(doc, "span");
+    example.className = `${config.addonRef}-sense-example`;
+    example.textContent = sense.example;
+    content.append(example);
+  }
+  card.append(input, createCheckmark(doc), content);
+  return { card, input, sense };
+}
+
+function renderVocabularyFooter(
+  doc: Document,
+  lookup: VocabularyLookup | undefined,
+  vi: boolean,
+) {
+  const footer = createHTML(doc, "footer");
+  footer.className = `${config.addonRef}-vocab-foot`;
+  const save = createHTML(doc, "button");
+  save.type = "button";
+  save.className = `${config.addonRef}-save-senses`;
+  save.disabled = true;
+  save.textContent = vi ? "Lưu 0 nghĩa" : "Save 0 meanings";
+  footer.append(save);
+  if (lookup) {
+    const source = createHTML(doc, "a");
+    source.className = `${config.addonRef}-vocab-source`;
+    source.href = lookup.sourceUrl;
+    source.target = "_blank";
+    source.rel = "noreferrer";
+    source.textContent = `FreeDictionaryAPI · ${lookup.sourceLicense}`;
+    footer.append(source);
+  }
+  return { footer, save };
+}
+
+function renderVocabularyPicker(
+  popup: HTMLDivElement,
+  picker: HTMLDivElement,
+  flashcardStatus: HTMLDivElement,
+  task: TranslateTask,
+  lookup: VocabularyLookup | undefined,
+  loading: boolean,
+  vi: boolean,
+) {
+  const renderKey = [
+    task.id,
+    task.status,
+    loading ? "loading" : lookup?.normalizationStatus || "none",
+    lookup?.senses.map((sense) => sense.id).join(",") || "",
+  ].join("|");
+  if (picker.dataset.renderKey === renderKey) return;
+  picker.dataset.renderKey = renderKey;
+  picker.classList.remove("is-leaving");
+  picker.replaceChildren();
+
+  const doc = picker.ownerDocument;
+  const word = lookup?.word || task.raw.normalize("NFKC").trim();
+  const header = renderVocabularyHeader(doc, word, lookup, vi, loading);
+  const list = createHTML(doc, "div");
+  list.className = `${config.addonRef}-vocab-list`;
+  list.setAttribute("role", "group");
+  list.setAttribute(
+    "aria-label",
+    vi ? "Các nghĩa từ vựng" : "Vocabulary meanings",
+  );
+  const { footer, save } = renderVocabularyFooter(doc, lookup, vi);
+  picker.append(header, list, footer);
+
+  if (loading) {
+    list.setAttribute("aria-busy", "true");
+    list.append(renderVocabularySkeleton(doc));
+    return;
+  }
+  if (!lookup) return;
+  if (lookup.llmError)
+    list.append(renderVocabularyError(doc, task, lookup, vi));
+
+  const normalized = lookup.normalizationStatus === "normalized";
+  const pronunciationInHeader = !!sharedPronunciation(lookup);
+  const controls = lookup.senses.map((sense, index) => {
+    const control = renderSenseCard(
+      doc,
+      sense,
+      index,
+      pronunciationInHeader,
+      normalized,
+    );
+    list.append(control.card);
+    return control;
+  });
+  const selected = new Set(
+    controls.filter(({ input }) => input.checked).map(({ sense }) => sense.id),
+  );
+  const counter = header.querySelector<HTMLElement>('[data-role="counter"]')!;
+
+  const syncSelection = () => {
+    const limitReached = selected.size >= 2;
+    controls.forEach(({ card, input, sense }) => {
+      const unavailable = !normalized;
+      const limited = normalized && limitReached && !input.checked;
+      input.disabled = unavailable || limited;
+      card.classList.toggle("is-selected", input.checked);
+      card.classList.toggle("is-limit-reached", limited);
+      card.classList.toggle("is-unavailable", unavailable);
+      card.setAttribute("aria-disabled", String(input.disabled));
+      if (input.checked) selected.add(sense.id);
+    });
+    counter.textContent = `${selected.size} / 2`;
+    save.disabled = !normalized || selected.size === 0;
+    save.textContent = vi
+      ? `Lưu ${selected.size} nghĩa`
+      : `Save ${selected.size} meaning${selected.size === 1 ? "" : "s"}`;
+  };
+
+  controls.forEach(({ input, sense }) => {
+    input.addEventListener("change", () => {
+      if (input.checked) selected.add(sense.id);
+      else selected.delete(sense.id);
+      syncSelection();
+    });
+  });
+  syncSelection();
+
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    const saved = await saveVocabularySensesFromTask(task, [...selected]);
+    flashcardStatus.textContent = vi
+      ? saved
+        ? `✓ Đã lưu flashcard với ${selected.size} nghĩa`
+        : "Không thể lưu flashcard"
+      : saved
+        ? `✓ Saved a flashcard with ${selected.size} meanings`
+        : "Could not save flashcard";
+    if (!saved) {
+      flashcardStatus.style.removeProperty("display");
+      syncSelection();
+      return;
+    }
+    save.textContent = vi ? "✓ Đã lưu" : "✓ Saved";
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      picker.style.display = "none";
+      picker.classList.remove("is-leaving");
+      setVocabularyPopupMode(popup, picker, false);
+      flashcardStatus.style.removeProperty("display");
+    };
+    ztoolkit.getGlobal("setTimeout")(() => {
+      picker.classList.add("is-leaving");
+      const onAnimationEnd = (event: AnimationEvent) => {
+        if (event.target !== picker) return;
+        picker.removeEventListener("animationend", onAnimationEnd);
+        finish();
+      };
+      picker.addEventListener("animationend", onAnimationEnd);
+      ztoolkit.getGlobal("setTimeout")(finish, 200);
+    }, 600);
+  });
 }
 
 export function updateReaderPopup() {
@@ -162,221 +536,39 @@ export function updateReaderPopup() {
 
   textarea.hidden = hidePopupTextarea || !hideTranslateButton;
   textarea.value = task.result || task.raw;
+  const vi = Zotero.locale.toLowerCase().startsWith("vi");
   if (flashcardStatus) {
-    const vi = Zotero.locale.toLowerCase().startsWith("vi");
-    if (task.wordLookup && task.status === "waiting" && getPref("enableAuto")) {
-      flashcardStatus.textContent = vi
-        ? "Đang gọi LLM để chuẩn hóa từ vựng…"
-        : "Calling the LLM to normalize vocabulary…";
-      updateHidden(flashcardStatus, false);
-    } else {
-      flashcardStatus.textContent = vi
-        ? "✓ Đã lưu flashcard"
-        : "✓ Saved to flashcards";
-      updateHidden(flashcardStatus, !(task.wordLookup && task.flashcardSaved));
-    }
+    flashcardStatus.textContent = vi
+      ? "✓ Đã lưu flashcard"
+      : "✓ Saved to flashcards";
+    updateHidden(flashcardStatus, !(task.wordLookup && task.flashcardSaved));
   }
   let vocabularyMode = false;
   if (vocabularyPicker) {
     const lookup = (
       task as typeof task & { vocabularyLookup?: VocabularyLookup }
     ).vocabularyLookup;
-    vocabularyPicker.replaceChildren();
-    const isVocabulary = !!lookup?.senses.length;
+    const loading =
+      !!task.wordLookup &&
+      (task.status === "processing" ||
+        (task.status === "waiting" && !!getPref("enableAuto"))) &&
+      !lookup;
+    const isVocabulary = loading || !!lookup?.senses.length;
+    const showVocabulary = isVocabulary && !task.flashcardSaved;
     vocabularyMode = isVocabulary;
-    setVocabularyPopupMode(popup, vocabularyPicker, isVocabulary);
-    updateHidden(vocabularyPicker, !isVocabulary);
+    setVocabularyPopupMode(popup, vocabularyPicker, showVocabulary);
+    updateHidden(vocabularyPicker, !showVocabulary);
     if (isVocabulary) textarea.hidden = true;
-    if (lookup?.senses.length) {
-      const doc = vocabularyPicker.ownerDocument;
-      const vi = Zotero.locale.toLowerCase().startsWith("vi");
-      const create = <K extends keyof HTMLElementTagNameMap>(tag: K) =>
-        doc.createElementNS(
-          "http://www.w3.org/1999/xhtml",
-          tag,
-        ) as HTMLElementTagNameMap[K];
-      const header = create("header");
-      header.className = `${config.addonRef}-vocab-header`;
-      header.style.cssText =
-        "display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;min-width:0;margin-bottom:10px";
-      const heading = create("div");
-      heading.style.cssText =
-        "display:flex;min-width:0;flex:1 1 200px;flex-direction:column;gap:2px";
-      const title = create("strong");
-      title.textContent = lookup.word;
-      const subtitle = create("span");
-      subtitle.textContent = vi
-        ? "Chọn tối đa 2 nghĩa để lưu"
-        : "Select up to 2 meanings";
-      heading.append(title, subtitle);
-      const badge = create("span");
-      badge.className = `${config.addonRef}-status-badge`;
-      badge.style.cssText =
-        "flex:0 1 auto;max-width:100%;padding:4px 7px;overflow-wrap:anywhere;border-radius:999px";
-      badge.textContent =
-        lookup.normalizationStatus === "normalized"
-          ? vi
-            ? "Đã chuẩn hóa bằng AI"
-            : "AI normalized"
-          : vi
-            ? "Dữ liệu thô"
-            : "Raw data";
-      header.append(heading, badge);
-      vocabularyPicker.append(header);
-
-      if (lookup.llmError) {
-        const errorBox = create("div");
-        errorBox.className = `${config.addonRef}-vocab-error`;
-        errorBox.style.cssText =
-          "display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;min-width:0;margin-bottom:9px;padding:8px 10px;overflow-wrap:anywhere;border:1px solid var(--color-red50,#d38b84);border-radius:8px";
-        const message = create("span");
-        message.textContent = `${vi ? "Không thể chuẩn hóa" : "Normalization failed"}: ${lookup.llmError}`;
-        const retry = create("button");
-        retry.type = "button";
-        retry.textContent = vi ? "Thử lại" : "Retry";
-        retry.addEventListener("click", async () => {
-          retry.disabled = true;
-          retry.textContent = vi ? "Đang xử lý…" : "Working…";
-          task.status = "waiting";
-          task.result = "";
-          delete (task as typeof task & { vocabularyLookup?: VocabularyLookup })
-            .vocabularyLookup;
-          await addon.hooks.onTranslate(task, {
-            noCheckZoteroItemLanguage: true,
-            noCache: true,
-          });
-        });
-        const actions = create("span");
-        actions.className = `${config.addonRef}-vocab-error-actions`;
-        actions.style.cssText =
-          "display:flex;flex:0 1 auto;flex-wrap:wrap;gap:5px";
-        const configure = create("button");
-        configure.type = "button";
-        configure.textContent = vi ? "Cấu hình" : "Configure";
-        configure.addEventListener("click", () => {
-          Zotero.Utilities.Internal.openPreferences(config.addonID);
-        });
-        actions.append(configure, retry);
-        errorBox.append(message, actions);
-        vocabularyPicker.append(errorBox);
-      }
-
-      const selected = new Set<string>();
-      const normalized = lookup.normalizationStatus === "normalized";
-      lookup.senses.forEach((sense, index) => {
-        const label = doc.createElementNS(
-          "http://www.w3.org/1999/xhtml",
-          "label",
-        );
-        label.className = `${config.addonRef}-sense-card`;
-        label.style.cssText =
-          "display:grid;grid-template-columns:auto minmax(0,1fr);align-items:flex-start;gap:9px;box-sizing:border-box;width:100%;min-width:0;margin:7px 0;padding:10px;overflow:hidden;border:1px solid var(--fill-quinary,#dfe3e8);border-radius:10px;white-space:normal";
-        const checkbox = doc.createElementNS(
-          "http://www.w3.org/1999/xhtml",
-          "input",
-        ) as HTMLInputElement;
-        checkbox.type = "checkbox";
-        checkbox.disabled = !normalized;
-        checkbox.checked = normalized && index < 2;
-        if (checkbox.checked) {
-          selected.add(sense.id);
-          label.classList.add("selected");
-          label.style.borderColor = "var(--color-accent-blue, #315fcb)";
-          label.style.boxShadow = "0 0 0 1px var(--color-accent-blue, #315fcb)";
-        }
-        const content = create("span");
-        content.className = `${config.addonRef}-sense-content`;
-        content.style.cssText =
-          "display:flex;min-width:0;max-width:100%;flex-direction:column;gap:4px;overflow-wrap:anywhere;word-break:break-word;white-space:normal;line-height:1.35";
-        const meta = create("span");
-        meta.className = `${config.addonRef}-sense-meta`;
-        meta.style.cssText =
-          "display:block;font-size:11px;font-weight:600;text-transform:uppercase";
-        meta.textContent = `${sense.partOfSpeech} · ${
-          sense.cefrLevel === "unknown" ? "CEFR ?" : `~${sense.cefrLevel}`
-        }${sense.pronunciation ? ` · ${sense.pronunciation}` : ""}`;
-        const meaningVi = create("strong");
-        meaningVi.style.display = "block";
-        meaningVi.textContent =
-          sense.meaningVi ||
-          (vi ? "Chưa có nghĩa Việt" : "No Vietnamese meaning");
-        const meaningEn = create("span");
-        meaningEn.style.display = "block";
-        meaningEn.textContent = sense.meaningEn;
-        content.append(meta, meaningVi, meaningEn);
-        if (sense.example) {
-          const example = create("em");
-          example.style.cssText =
-            "display:block;padding-left:8px;overflow-wrap:anywhere;border-left:2px solid var(--fill-quinary,#dfe3e8)";
-          example.textContent = sense.example;
-          content.append(example);
-        }
-        label.append(checkbox, content);
-        vocabularyPicker.append(label);
-        checkbox.addEventListener("change", () => {
-          label.classList.toggle("selected", checkbox.checked);
-          label.style.borderColor = checkbox.checked
-            ? "var(--color-accent-blue, #315fcb)"
-            : "var(--fill-quinary, #dfe3e8)";
-          label.style.boxShadow = checkbox.checked
-            ? "0 0 0 1px var(--color-accent-blue, #315fcb)"
-            : "none";
-          if (checkbox.checked) selected.add(sense.id);
-          else selected.delete(sense.id);
-          vocabularyPicker
-            .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-            .forEach((candidate) => {
-              candidate.disabled =
-                !normalized || (!candidate.checked && selected.size >= 2);
-            });
-          save.disabled = selected.size === 0 || !normalized;
-          save.textContent = vi
-            ? `Lưu ${selected.size} nghĩa`
-            : `Save ${selected.size} meaning${selected.size === 1 ? "" : "s"}`;
-        });
-      });
-      if (normalized && selected.size >= 2) {
-        vocabularyPicker
-          .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-          .forEach((candidate) => {
-            candidate.disabled = !candidate.checked;
-          });
-      }
-      const save = doc.createElementNS(
-        "http://www.w3.org/1999/xhtml",
-        "button",
-      ) as HTMLButtonElement;
-      save.className = `toolbar-button wide-button ${config.addonRef}-save-senses`;
-      save.style.cssText =
-        "box-sizing:border-box;width:100%;max-width:100%;margin-top:4px;overflow:hidden;text-overflow:ellipsis";
-      save.disabled = !normalized || selected.size === 0;
-      save.textContent = vi
-        ? `Lưu ${selected.size} nghĩa`
-        : `Save ${selected.size} meanings`;
-      save.addEventListener("click", async () => {
-        save.disabled = true;
-        const saved = await saveVocabularySensesFromTask(task, [...selected]);
-        flashcardStatus.textContent = Zotero.locale.startsWith("vi")
-          ? saved
-            ? `✓ Đã lưu flashcard với ${selected.size} nghĩa`
-            : "Không thể lưu flashcard"
-          : saved
-            ? `✓ Saved a flashcard with ${selected.size} meanings`
-            : "Could not save flashcard";
-        updateHidden(flashcardStatus, !saved);
-        if (saved) updateHidden(vocabularyPicker, true);
-      });
-      vocabularyPicker.append(save);
-
-      const source = create("a");
-      source.className = `${config.addonRef}-vocab-source`;
-      source.style.cssText =
-        "display:block;max-width:100%;margin-top:9px;overflow-wrap:anywhere;text-align:center;text-decoration:none";
-      source.href = lookup.sourceUrl;
-      source.target = "_blank";
-      source.rel = "noreferrer";
-      source.textContent = `FreeDictionaryAPI · ${lookup.sourceLicense}`;
-      vocabularyPicker.append(source);
+    if (showVocabulary) {
+      renderVocabularyPicker(
+        popup,
+        vocabularyPicker,
+        flashcardStatus,
+        task,
+        lookup,
+        loading,
+        vi,
+      );
     }
   }
   textarea.style.fontSize = `${getPref("fontSize")}px`;
@@ -445,9 +637,6 @@ export function buildReaderPopup(
           ],
           styles: {
             display: "none",
-            padding: "6px 9px",
-            color: "var(--color-accent-blue)",
-            fontSize: "12px",
           },
           ignoreIfExists: true,
         },
@@ -520,9 +709,6 @@ export function buildReaderPopup(
               keepSize ? Number(getPref("popupHeight")) : 30,
             )}px`,
             marginInline: "2px",
-            border: "none",
-            background: "var(--color-sidepane)",
-            borderRadius: "6px",
             padding: "5px",
           },
           properties: {

@@ -12,7 +12,7 @@ import {
 import { TranslateService } from "./base";
 
 type VocabularyTask = TranslateTask & { vocabularyLookup?: VocabularyLookup };
-export const VOCABULARY_NORMALIZATION_VERSION = 1;
+export const VOCABULARY_NORMALIZATION_VERSION = 2;
 
 const CEFR_LEVELS = new Set<CEFRLevel>([
   "A1",
@@ -132,6 +132,9 @@ async function normalizeWithConfiguredLLM(
     "Ignore archaic, obsolete, rare, and overly specialized meanings.",
     "Never invent a meaning, change sourceSenseId, or change the requested word.",
     "For every returned meaning, provide a normalized English part of speech, one IPA pronunciation, concise English and Vietnamese meanings, one short natural English example, and an estimated CEFR level.",
+    "Write meaningVi as polished Vietnamese dictionary equivalents: prefer concise, idiomatic headwords or short phrases that a Vietnamese learner would naturally use, not a literal translation or a sentence-length paraphrase of meaningEn.",
+    'Preserve the exact sense and nuance; for example, translate "obstinate" as "cứng đầu; bướng bỉnh", not as a literal Vietnamese rendering of its English definition.',
+    "When one English sense has two established Vietnamese equivalents, separate them with a semicolon and do not add explanations unless needed to distinguish the sense.",
     "Reuse accurate API fields; fill only missing or unsuitable fields.",
     "CEFR must be A1, A2, B1, B2, C1, C2, or unknown and is only an estimate.",
     'Return only JSON: {"senses":[{"sourceSenseId":string,"word":string,"partOfSpeech":string,"pronunciation":string,"meaningVi":string,"meaningEn":string,"example":string,"cefrLevel":"A1"|"A2"|"B1"|"B2"|"C1"|"C2"|"unknown"}]}.',
