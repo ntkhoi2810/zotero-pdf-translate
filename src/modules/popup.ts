@@ -4,8 +4,21 @@ import { getString } from "../utils/locale";
 import { getPref, setPref } from "../utils/prefs";
 import { addTranslateTask, getLastTranslateTask } from "../utils/task";
 import { slice } from "../utils/str";
-import { saveVocabularySenseFromTask } from "./flashcards/storage";
+import { saveVocabularySensesFromTask } from "./flashcards/storage";
 import type { VocabularyLookup } from "./dictionary/model";
+
+function ensurePopupStyles(doc: Document) {
+  const id = `${config.addonRef}-reader-popup-styles`;
+  if (doc.getElementById(id)) return;
+  const link = doc.createElementNS(
+    "http://www.w3.org/1999/xhtml",
+    "link",
+  ) as HTMLLinkElement;
+  link.id = id;
+  link.rel = "stylesheet";
+  link.href = `chrome://${config.addonRef}/content/styles/readerPopup.css`;
+  doc.head?.append(link);
+}
 
 export function updateReaderPopup() {
   const popup = addon.data.popup.currentPopup;
@@ -111,77 +124,185 @@ export function updateReaderPopup() {
   textarea.hidden = hidePopupTextarea || !hideTranslateButton;
   textarea.value = task.result || task.raw;
   if (flashcardStatus) {
-    flashcardStatus.textContent = Zotero.locale.startsWith("vi")
-      ? "✓ Đã lưu flashcard"
-      : "✓ Saved to flashcards";
-    updateHidden(flashcardStatus, !(task.wordLookup && task.flashcardSaved));
+    const vi = Zotero.locale.toLowerCase().startsWith("vi");
+    if (task.wordLookup && task.status === "waiting" && getPref("enableAuto")) {
+      flashcardStatus.textContent = vi
+        ? "Đang gọi LLM để chuẩn hóa từ vựng…"
+        : "Calling the LLM to normalize vocabulary…";
+      updateHidden(flashcardStatus, false);
+    } else {
+      flashcardStatus.textContent = vi
+        ? "✓ Đã lưu flashcard"
+        : "✓ Saved to flashcards";
+      updateHidden(flashcardStatus, !(task.wordLookup && task.flashcardSaved));
+    }
   }
   if (vocabularyPicker) {
     const lookup = (
       task as typeof task & { vocabularyLookup?: VocabularyLookup }
     ).vocabularyLookup;
     vocabularyPicker.replaceChildren();
-    updateHidden(vocabularyPicker, !lookup?.senses.length);
+    const isVocabulary = !!lookup?.senses.length;
+    updateHidden(vocabularyPicker, !isVocabulary);
+    if (isVocabulary) textarea.hidden = true;
     if (lookup?.senses.length) {
       const doc = vocabularyPicker.ownerDocument;
-      const title = doc.createElementNS(
-        "http://www.w3.org/1999/xhtml",
-        "strong",
-      );
-      title.textContent = Zotero.locale.startsWith("vi")
-        ? "Chọn nghĩa để tạo flashcard"
-        : "Select meanings for flashcards";
-      vocabularyPicker.append(title);
+      const vi = Zotero.locale.toLowerCase().startsWith("vi");
+      const create = <K extends keyof HTMLElementTagNameMap>(tag: K) =>
+        doc.createElementNS(
+          "http://www.w3.org/1999/xhtml",
+          tag,
+        ) as HTMLElementTagNameMap[K];
+      const header = create("header");
+      header.className = `${config.addonRef}-vocab-header`;
+      const heading = create("div");
+      const title = create("strong");
+      title.textContent = lookup.word;
+      const subtitle = create("span");
+      subtitle.textContent = vi
+        ? "Chọn tối đa 2 nghĩa để lưu"
+        : "Select up to 2 meanings";
+      heading.append(title, subtitle);
+      const badge = create("span");
+      badge.className = `${config.addonRef}-status-badge`;
+      badge.textContent =
+        lookup.normalizationStatus === "normalized"
+          ? vi
+            ? "Đã chuẩn hóa bằng AI"
+            : "AI normalized"
+          : vi
+            ? "Dữ liệu thô"
+            : "Raw data";
+      header.append(heading, badge);
+      vocabularyPicker.append(header);
+
+      if (lookup.llmError) {
+        const errorBox = create("div");
+        errorBox.className = `${config.addonRef}-vocab-error`;
+        const message = create("span");
+        message.textContent = `${vi ? "Không thể chuẩn hóa" : "Normalization failed"}: ${lookup.llmError}`;
+        const retry = create("button");
+        retry.type = "button";
+        retry.textContent = vi ? "Thử lại" : "Retry";
+        retry.addEventListener("click", async () => {
+          retry.disabled = true;
+          retry.textContent = vi ? "Đang xử lý…" : "Working…";
+          task.status = "waiting";
+          task.result = "";
+          delete (task as typeof task & { vocabularyLookup?: VocabularyLookup })
+            .vocabularyLookup;
+          await addon.hooks.onTranslate(task, {
+            noCheckZoteroItemLanguage: true,
+            noCache: true,
+          });
+        });
+        const actions = create("span");
+        actions.className = `${config.addonRef}-vocab-error-actions`;
+        const configure = create("button");
+        configure.type = "button";
+        configure.textContent = vi ? "Cấu hình" : "Configure";
+        configure.addEventListener("click", () => {
+          Zotero.Utilities.Internal.openPreferences(config.addonID);
+        });
+        actions.append(configure, retry);
+        errorBox.append(message, actions);
+        vocabularyPicker.append(errorBox);
+      }
+
       const selected = new Set<string>();
-      for (const sense of lookup.senses) {
+      const normalized = lookup.normalizationStatus === "normalized";
+      lookup.senses.forEach((sense, index) => {
         const label = doc.createElementNS(
           "http://www.w3.org/1999/xhtml",
           "label",
         );
-        label.style.cssText =
-          "display:flex;gap:8px;align-items:flex-start;padding:5px 0;cursor:pointer";
+        label.className = `${config.addonRef}-sense-card`;
         const checkbox = doc.createElementNS(
           "http://www.w3.org/1999/xhtml",
           "input",
         ) as HTMLInputElement;
         checkbox.type = "checkbox";
-        const content = doc.createElementNS(
-          "http://www.w3.org/1999/xhtml",
-          "span",
-        );
-        content.textContent = `[${sense.partOfSpeech}] ${
-          sense.definitionVi || sense.definitionEn
-        }`;
+        checkbox.disabled = !normalized;
+        checkbox.checked = normalized && index < 2;
+        if (checkbox.checked) {
+          selected.add(sense.id);
+          label.classList.add("selected");
+        }
+        const content = create("span");
+        content.className = `${config.addonRef}-sense-content`;
+        const meta = create("span");
+        meta.className = `${config.addonRef}-sense-meta`;
+        meta.textContent = `${sense.partOfSpeech} · ${
+          sense.cefrLevel === "unknown" ? "CEFR ?" : `~${sense.cefrLevel}`
+        }${sense.pronunciation ? ` · ${sense.pronunciation}` : ""}`;
+        const meaningVi = create("strong");
+        meaningVi.textContent =
+          sense.meaningVi ||
+          (vi ? "Chưa có nghĩa Việt" : "No Vietnamese meaning");
+        const meaningEn = create("span");
+        meaningEn.textContent = sense.meaningEn;
+        content.append(meta, meaningVi, meaningEn);
+        if (sense.example) {
+          const example = create("em");
+          example.textContent = sense.example;
+          content.append(example);
+        }
         label.append(checkbox, content);
         vocabularyPicker.append(label);
         checkbox.addEventListener("change", () => {
+          label.classList.toggle("selected", checkbox.checked);
           if (checkbox.checked) selected.add(sense.id);
           else selected.delete(sense.id);
-          save.disabled = selected.size === 0;
+          vocabularyPicker
+            .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
+            .forEach((candidate) => {
+              candidate.disabled =
+                !normalized || (!candidate.checked && selected.size >= 2);
+            });
+          save.disabled = selected.size === 0 || !normalized;
+          save.textContent = vi
+            ? `Lưu ${selected.size} nghĩa`
+            : `Save ${selected.size} meaning${selected.size === 1 ? "" : "s"}`;
         });
+      });
+      if (normalized && selected.size >= 2) {
+        vocabularyPicker
+          .querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
+          .forEach((candidate) => {
+            candidate.disabled = !candidate.checked;
+          });
       }
       const save = doc.createElementNS(
         "http://www.w3.org/1999/xhtml",
         "button",
       ) as HTMLButtonElement;
-      save.className = "toolbar-button wide-button";
-      save.disabled = true;
-      save.textContent = Zotero.locale.startsWith("vi")
-        ? "Lưu nghĩa đã chọn"
-        : "Save selected meanings";
+      save.className = `toolbar-button wide-button ${config.addonRef}-save-senses`;
+      save.disabled = !normalized || selected.size === 0;
+      save.textContent = vi
+        ? `Lưu ${selected.size} nghĩa`
+        : `Save ${selected.size} meanings`;
       save.addEventListener("click", async () => {
         save.disabled = true;
-        let saved = 0;
-        for (const senseId of selected) {
-          if (await saveVocabularySenseFromTask(task, senseId)) saved++;
-        }
+        const saved = await saveVocabularySensesFromTask(task, [...selected]);
         flashcardStatus.textContent = Zotero.locale.startsWith("vi")
-          ? `✓ Đã lưu ${saved} flashcard`
-          : `✓ Saved ${saved} flashcards`;
-        updateHidden(flashcardStatus, false);
-        updateHidden(vocabularyPicker, true);
+          ? saved
+            ? `✓ Đã lưu flashcard với ${selected.size} nghĩa`
+            : "Không thể lưu flashcard"
+          : saved
+            ? `✓ Saved a flashcard with ${selected.size} meanings`
+            : "Could not save flashcard";
+        updateHidden(flashcardStatus, !saved);
+        if (saved) updateHidden(vocabularyPicker, true);
       });
       vocabularyPicker.append(save);
+
+      const source = create("a");
+      source.className = `${config.addonRef}-vocab-source`;
+      source.href = lookup.sourceUrl;
+      source.target = "_blank";
+      source.rel = "noreferrer";
+      source.textContent = `FreeDictionaryAPI · ${lookup.sourceLicense}`;
+      vocabularyPicker.append(source);
     }
   }
   textarea.style.fontSize = `${getPref("fontSize")}px`;
@@ -206,6 +327,7 @@ export function buildReaderPopup(
   const { reader, doc, append } = event;
   const annotation = event.params.annotation;
   const popup = doc.querySelector(".selection-popup") as HTMLDivElement;
+  ensurePopupStyles(doc);
   addon.data.popup.currentPopup = popup;
   popup.style.maxWidth = "none";
   popup.setAttribute(
@@ -238,8 +360,6 @@ export function buildReaderPopup(
           ],
           styles: {
             display: "none",
-            padding: "8px 9px",
-            borderBottom: "1px solid var(--fill-quinary)",
           },
           ignoreIfExists: true,
         },

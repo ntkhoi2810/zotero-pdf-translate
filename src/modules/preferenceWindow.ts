@@ -106,6 +106,54 @@ function buildPrefsPane() {
   ztoolkit.UI.replaceElement(
     {
       tag: "menulist",
+      id: makeId("flashcardLLM"),
+      attributes: {
+        value: (getPref("flashcards.llmService") as string) || "",
+        native: "true",
+      },
+      listeners: [
+        {
+          type: "command",
+          listener: () => {
+            const value = (
+              doc.querySelector(`#${makeId("flashcardLLM")}`) as XUL.MenuList
+            ).getAttribute("value");
+            setPref("flashcards.llmService", value || "");
+          },
+        },
+      ],
+      children: [
+        {
+          tag: "menupopup",
+          children: [
+            {
+              tag: "menuitem",
+              attributes: { label: "—", value: "" },
+            },
+            ...services
+              .getAllServices()
+              .filter((service) => service.supportsPromptOverride)
+              .map((service) => ({
+                tag: "menuitem" as const,
+                attributes: {
+                  label: services.getServiceNameByID(service.id),
+                  value: service.id,
+                },
+              })),
+          ],
+        },
+      ],
+    },
+    doc.querySelector(`#${makeId("flashcardLLM-placeholder")}`)!,
+  );
+  if (Zotero.locale.toLowerCase().startsWith("vi")) {
+    const label = doc.querySelector('[data-l10n-id="pref-flashcards-llm"]');
+    if (label) label.textContent = "LLM cho từ vựng";
+  }
+
+  ztoolkit.UI.replaceElement(
+    {
+      tag: "menulist",
       id: makeId("langfrom"),
       attributes: {
         value: getPref("sourceLanguage") as string,

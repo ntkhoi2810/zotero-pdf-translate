@@ -59,6 +59,7 @@ export type FluentMessageId =
   | 'pref-flashcards-autoSave'
   | 'pref-flashcards-browse'
   | 'pref-flashcards-hint'
+  | 'pref-flashcards-llm'
   | 'pref-flashcards-open'
   | 'pref-flashcards-storage'
   | 'pref-general'

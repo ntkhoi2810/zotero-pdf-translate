@@ -25,6 +25,9 @@ export interface TranslateService {
    */
   type: "word" | "sentence";
 
+  /** Service can safely consume a task-level system/user prompt override. */
+  supportsPromptOverride?: boolean;
+
   /**
    * Documentation or help page URL.
    *

@@ -143,6 +143,7 @@ const translate = <TranslateService["translate"]>async function (data) {
 export const Gemini: TranslateService = {
   id: "gemini",
   type: "sentence",
+  supportsPromptOverride: true,
   helpUrl: "https://ai.google.dev/gemini-api/docs",
 
   defaultSecret: "",

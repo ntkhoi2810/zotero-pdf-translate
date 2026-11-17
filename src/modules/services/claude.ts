@@ -210,6 +210,7 @@ const translate = <TranslateService["translate"]>async function (data) {
 export const Claude: TranslateService = {
   id: "claude",
   type: "sentence",
+  supportsPromptOverride: true,
   helpUrl:
     "https://docs.anthropic.com/claude/docs/getting-started-with-the-claude-api",
 

@@ -139,6 +139,7 @@ pref-advanced-stripEmptyLines =
 pref-flashcards = Flashcard del vocabolario
 pref-flashcards-autoSave =
     .label = Salva automaticamente le ricerche di una singola parola
+pref-flashcards-llm = Vocabulary LLM
 pref-flashcards-storage = File dati
 pref-flashcards-browse =
     .label = Scegli cartella…

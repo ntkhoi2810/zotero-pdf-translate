@@ -18,20 +18,27 @@ export interface DictionarySenseCandidate {
   pronunciations: DictionaryPronunciation[];
 }
 
+export type CEFRLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2" | "unknown";
+export type VocabularyFieldSource = "dictionary" | "ai" | "none";
+
+/** A learner-facing meaning normalized from one API sense. */
 export interface VocabularySense {
   id: string;
+  word: string;
   partOfSpeech: string;
   pronunciation: string;
+  meaningEn: string;
+  meaningVi: string;
+  example: string;
+  cefrLevel: CEFRLevel;
+  cefrEstimated: true;
   definitionOriginal: string;
-  definitionEn: string;
-  definitionVi: string;
-  exampleEn: string;
-  exampleVi: string;
-  exampleSource: "dictionary" | "ai" | "none";
+  partOfSpeechSource: VocabularyFieldSource;
+  pronunciationSource: VocabularyFieldSource;
+  exampleSource: VocabularyFieldSource;
   synonyms: string[];
   antonyms: string[];
   tags: string[];
-  reason: "daily" | "academic-cs" | "fallback";
 }
 
 export interface VocabularyLookup {
@@ -40,7 +47,10 @@ export interface VocabularyLookup {
   sourceUrl: string;
   sourceLicense: string;
   llmService?: string;
+  normalizationVersion?: number;
   llmError?: string;
+  normalizationStatus: "raw" | "normalized" | "error";
+  /** Ranked candidates. New lookups contain at most five. */
   senses: VocabularySense[];
 }
 
@@ -91,7 +101,7 @@ export function flattenDictionaryEntries(
           .filter((item: any) => typeof item?.text === "string")
           .map((item: any) => ({
             type: typeof item.type === "string" ? item.type : "",
-            text: item.text,
+            text: item.text.trim(),
             tags: strings(item.tags),
           }))
       : [];
@@ -117,11 +127,8 @@ export function flattenDictionaryEntries(
         );
         const duplicateNumber = usedIds.get(baseId) || 0;
         usedIds.set(baseId, duplicateNumber + 1);
-        const id = duplicateNumber
-          ? `${baseId}-${duplicateNumber + 1}`
-          : baseId;
         candidates.push({
-          id,
+          id: duplicateNumber ? `${baseId}-${duplicateNumber + 1}` : baseId,
           entryIndex,
           partOfSpeech,
           depth,
@@ -147,8 +154,6 @@ export function flattenDictionaryEntries(
   return candidates;
 }
 
-const ACADEMIC_CS =
-  /\b(comput|software|hardware|program|algorithm|data|database|network|internet|memory|processor|system|function|variable|object|class|method|interface|server|client|machine|digital|logic|mathemat|science|research|academic|statistic|model|theory)\b/i;
 const RARE_TAG =
   /^(archaic|obsolete|historical|rare|dated|poetic|dialectal|chiefly historical)$/i;
 
@@ -156,21 +161,9 @@ export function buildMeaningCandidatePool(
   candidates: DictionarySenseCandidate[],
   max = 60,
 ) {
-  const ordinary = candidates.filter(
-    (sense) => !sense.tags.some((tag) => RARE_TAG.test(tag)),
-  );
-  const daily = ordinary.slice(0, 30);
-  const academic = ordinary.filter((sense) =>
-    ACADEMIC_CS.test(
-      `${sense.definition} ${sense.parentDefinition || ""} ${sense.tags.join(" ")}`,
-    ),
-  );
-  const result = new Map<string, DictionarySenseCandidate>();
-  for (const sense of [...daily, ...academic, ...ordinary]) {
-    if (result.size >= max) break;
-    result.set(sense.id, sense);
-  }
-  return [...result.values()];
+  return candidates
+    .filter((sense) => !sense.tags.some((tag) => RARE_TAG.test(tag)))
+    .slice(0, max);
 }
 
 function bestPronunciation(sense: DictionarySenseCandidate) {
@@ -181,71 +174,56 @@ function bestPronunciation(sense: DictionarySenseCandidate) {
 }
 
 export function candidateToVocabularySense(
+  word: string,
   sense: DictionarySenseCandidate,
-  reason: VocabularySense["reason"] = "fallback",
 ): VocabularySense {
+  const pronunciation = bestPronunciation(sense);
+  const example = sense.examples[0] || "";
   return {
     id: sense.id,
+    word,
     partOfSpeech: sense.partOfSpeech,
-    pronunciation: bestPronunciation(sense),
+    pronunciation,
+    meaningEn: sense.definition,
+    meaningVi: "",
+    example,
+    cefrLevel: "unknown",
+    cefrEstimated: true,
     definitionOriginal: sense.definition,
-    definitionEn: sense.definition,
-    definitionVi: "",
-    exampleEn: sense.examples[0] || "",
-    exampleVi: "",
-    exampleSource: sense.examples[0] ? "dictionary" : "none",
+    partOfSpeechSource:
+      sense.partOfSpeech === "unknown" ? "none" : "dictionary",
+    pronunciationSource: pronunciation ? "dictionary" : "none",
+    exampleSource: example ? "dictionary" : "none",
     synonyms: sense.synonyms,
     antonyms: sense.antonyms,
     tags: sense.tags,
-    reason,
   };
 }
 
 export function fallbackVocabularySenses(
+  word: string,
   candidates: DictionarySenseCandidate[],
+  max = 5,
 ): VocabularySense[] {
-  const pool = buildMeaningCandidatePool(candidates);
-  const daily = pool[0];
-  const academic = pool.find(
-    (sense) =>
-      sense.id !== daily?.id &&
-      ACADEMIC_CS.test(
-        `${sense.definition} ${sense.parentDefinition || ""} ${sense.tags.join(" ")}`,
-      ),
-  );
-  const selected = [
-    daily,
-    academic || pool.find((sense) => sense.id !== daily?.id),
-  ]
-    .filter((sense): sense is DictionarySenseCandidate => Boolean(sense))
-    .slice(0, 2);
-
-  return selected.map((sense, index) =>
-    candidateToVocabularySense(
-      sense,
-      index === 0 ? "daily" : academic ? "academic-cs" : "fallback",
-    ),
-  );
+  return buildMeaningCandidatePool(candidates)
+    .slice(0, max)
+    .map((sense) => candidateToVocabularySense(word, sense));
 }
 
 export function formatVocabularyLookup(lookup: VocabularyLookup) {
-  const lines = [`${lookup.word}`];
+  const lines = [lookup.word];
   lookup.senses.forEach((sense, index) => {
-    const heading = `${index + 1}. [${sense.partOfSpeech}]${
-      sense.pronunciation ? ` ${sense.pronunciation}` : ""
-    }`;
-    lines.push(heading, `EN: ${sense.definitionEn}`);
-    if (sense.definitionVi) lines.push(`VI: ${sense.definitionVi}`);
-    if (sense.exampleEn) lines.push(`Example: ${sense.exampleEn}`);
-    if (sense.exampleVi) lines.push(`Ví dụ: ${sense.exampleVi}`);
-    if (sense.synonyms.length)
-      lines.push(`Synonyms: ${sense.synonyms.join(", ")}`);
-    if (sense.antonyms.length)
-      lines.push(`Antonyms: ${sense.antonyms.join(", ")}`);
+    const level = sense.cefrLevel === "unknown" ? "" : ` · ~${sense.cefrLevel}`;
+    lines.push(
+      `${index + 1}. [${sense.partOfSpeech}]${level}${
+        sense.pronunciation ? ` ${sense.pronunciation}` : ""
+      }`,
+      `EN: ${sense.meaningEn}`,
+    );
+    if (sense.meaningVi) lines.push(`VI: ${sense.meaningVi}`);
+    if (sense.example) lines.push(`Example: ${sense.example}`);
   });
-  if (lookup.llmError) {
-    lines.push(`LLM: ${lookup.llmError}`);
-  }
+  if (lookup.llmError) lines.push(`LLM: ${lookup.llmError}`);
   lines.push(`Source: ${lookup.sourceUrl}`);
   return lines.join("\n");
 }

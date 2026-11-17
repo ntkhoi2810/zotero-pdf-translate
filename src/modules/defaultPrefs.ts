@@ -12,6 +12,15 @@ export function setDefaultPrefSettings() {
   if (!servicesIds.includes((getPref("dictSource") as string) || "")) {
     setPref("dictSource", isZhCN ? "bingdict" : "freedictionaryapi");
   }
+  const vocabularyLLM = getPref("flashcards.llmService") as string;
+  if (!services.getServiceById(vocabularyLLM)?.supportsPromptOverride) {
+    const translationService = services.getServiceById(
+      getPref("translateSource") as string,
+    );
+    if (translationService?.supportsPromptOverride) {
+      setPref("flashcards.llmService", translationService.id);
+    }
+  }
 
   if (!getPref("targetLanguage")) {
     setPref("targetLanguage", Zotero.locale);

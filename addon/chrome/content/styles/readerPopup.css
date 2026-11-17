@@ -1,0 +1,179 @@
+.selection-popup {
+  --zpt-surface: light-dark(#ffffff, #29292d);
+  --zpt-subtle: light-dark(#f5f7fa, #232428);
+  --zpt-border: light-dark(#dfe3e8, #45474e);
+  --zpt-text: light-dark(#202124, #f4f4f5);
+  --zpt-muted: light-dark(#646b75, #a9adb5);
+  --zpt-accent: light-dark(#315fcb, #84a8ff);
+  color-scheme: light dark;
+}
+
+.zoteropdftranslate-vocabulary-picker {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 28px));
+  max-height: min(620px, calc(100vh - 80px));
+  padding: 12px;
+  overflow: auto;
+  border-top: 1px solid var(--zpt-border);
+  background: var(--zpt-surface);
+  color: var(--zpt-text);
+}
+
+.zoteropdftranslate-vocab-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.zoteropdftranslate-vocab-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.zoteropdftranslate-vocab-header strong {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.zoteropdftranslate-vocab-header span,
+.zoteropdftranslate-vocab-source {
+  color: var(--zpt-muted);
+  font-size: 11px;
+}
+
+.zoteropdftranslate-status-badge {
+  flex: none;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--zpt-accent) 14%, transparent);
+  color: var(--zpt-accent) !important;
+}
+
+.zoteropdftranslate-vocab-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+  padding: 8px 10px;
+  border: 1px solid light-dark(#e9b7b3, #824b47);
+  border-radius: 8px;
+  background: light-dark(#fff4f2, #3b2928);
+  color: light-dark(#9f2d24, #ffaaa4);
+  font-size: 12px;
+}
+
+.zoteropdftranslate-vocab-error button {
+  flex: none;
+}
+
+.zoteropdftranslate-vocab-error-actions {
+  display: flex;
+  flex: none;
+  gap: 5px;
+}
+
+.zoteropdftranslate-sense-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 7px 0;
+  padding: 10px;
+  border: 1px solid var(--zpt-border);
+  border-radius: 10px;
+  background: var(--zpt-subtle);
+  cursor: pointer;
+}
+
+.zoteropdftranslate-sense-card.selected {
+  border-color: var(--zpt-accent);
+  box-shadow: 0 0 0 1px var(--zpt-accent);
+}
+
+.zoteropdftranslate-sense-card input {
+  flex: none;
+  margin-top: 3px;
+}
+
+.zoteropdftranslate-sense-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.35;
+}
+
+.zoteropdftranslate-sense-meta {
+  color: var(--zpt-accent);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.zoteropdftranslate-sense-content strong {
+  font-size: 13px;
+}
+
+.zoteropdftranslate-sense-content > span:not(.zoteropdftranslate-sense-meta),
+.zoteropdftranslate-sense-content em {
+  color: var(--zpt-muted);
+  font-size: 12px;
+}
+
+.zoteropdftranslate-sense-content em {
+  padding-left: 8px;
+  border-left: 2px solid var(--zpt-border);
+}
+
+.zoteropdftranslate-save-senses {
+  width: 100%;
+  margin-top: 4px;
+  border-color: var(--zpt-accent) !important;
+  background: var(--zpt-accent) !important;
+  color: light-dark(#fff, #111) !important;
+}
+
+.zoteropdftranslate-vocab-source {
+  display: block;
+  margin-top: 9px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.zoteropdftranslate-flashcard-status {
+  margin: 7px 9px;
+  padding: 7px 9px !important;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--zpt-accent) 12%, transparent);
+}
+
+.zoteropdftranslate-popup-textarea {
+  box-sizing: border-box;
+  margin: 6px 2px !important;
+  border: 1px solid var(--zpt-border) !important;
+  border-radius: 9px !important;
+  background: var(--zpt-subtle) !important;
+  color: var(--zpt-text) !important;
+  box-shadow: inset 0 1px 2px color-mix(in srgb, #000 5%, transparent);
+}
+
+.selection-popup > .zoteropdftranslate-readerpopup.toolbar-button {
+  margin-inline: 2px;
+  border-radius: 8px;
+}
+
+@media (max-width: 520px) {
+  .zoteropdftranslate-vocabulary-picker {
+    width: calc(100vw - 20px);
+    padding: 9px;
+  }
+
+  .zoteropdftranslate-vocab-header,
+  .zoteropdftranslate-vocab-error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

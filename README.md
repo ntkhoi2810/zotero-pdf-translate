@@ -300,20 +300,22 @@ The plugin is built to `./build/*.xpi`.
 ### Vocabulary lookup and flashcards
 
 The `FreeDictionaryAPI + LLM` word service reads structured English entries
-from [FreeDictionaryAPI.com](https://freedictionaryapi.com/) and reuses the
-configured paragraph-translation LLM to select at most two useful meanings.
-It prioritizes everyday usage and, when available, an academic or
-computer-science meaning. Select the meanings you want in the reader popup;
-each selected meaning becomes a separate flashcard.
+from [FreeDictionaryAPI.com](https://freedictionaryapi.com/). Choose a
+dedicated vocabulary LLM in Preferences. It normalizes word, part of speech,
+IPA pronunciation, English/Vietnamese meanings, an English example, and an
+estimated CEFR level. The reader popup ranks up to five common meanings,
+preselects the top two, and lets you save up to two meanings in one flashcard.
+If normalization fails, raw dictionary data remains visible but cannot be
+saved until a retry succeeds.
 
 The flashcard window exports a UTF-8 CSV for Excel and a UTF-8 TSV for Anki.
 For Anki, enable HTML during import and map `ID`, `Front`, `Back`, and `Tags`.
-The stable ID in the first field lets a later import update the same note
-instead of merging different meanings of the same word.
+The stable ID in the first field lets a later import update the same note.
+CSV exports one row per meaning; Anki keeps all selected meanings on one note.
 
 Dictionary content links back to Wiktionary and is provided under CC BY-SA
-4.0 through FreeDictionaryAPI.com. AI-generated examples are marked in the
-stored `example_source` field.
+4.0 through FreeDictionaryAPI.com. Fields completed by AI retain provenance in
+the stored structured sense.
 
 ### Contributing
 

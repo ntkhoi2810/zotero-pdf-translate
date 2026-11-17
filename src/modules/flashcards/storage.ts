@@ -3,7 +3,7 @@ import type { TranslateTask } from "../../utils/task";
 import { isSingleWordText } from "../../utils/word";
 import type { VocabularyLookup, VocabularySense } from "../dictionary/model";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const DATA_DIRECTORY = "zotero-pdf-translate";
 const DATA_FILE = "flashcards.json";
 
@@ -21,6 +21,9 @@ export interface Flashcard {
   createdAt: string;
   lastSeenAt: string;
   lookupCount: number;
+  /** Structured meanings. Schema v3 stores all selected meanings on one card. */
+  senses?: VocabularySense[];
+  // Schema v1/v2 compatibility fields. They are migrated into `senses`.
   senseId?: string;
   partOfSpeech?: string;
   pronunciation?: string;
@@ -82,7 +85,7 @@ function validateDatabase(value: unknown): FlashcardDatabase {
   }
   const data = value as Partial<FlashcardDatabase>;
   if (
-    ![1, SCHEMA_VERSION].includes(data.schemaVersion || 0) ||
+    ![1, 2, SCHEMA_VERSION].includes(data.schemaVersion || 0) ||
     !Array.isArray(data.cards)
   ) {
     throw new Error("Unsupported or invalid flashcard data format.");
@@ -106,7 +109,73 @@ function validateDatabase(value: unknown): FlashcardDatabase {
   if (!cardsAreValid) {
     throw new Error("Flashcard data contains an invalid card.");
   }
-  return { schemaVersion: SCHEMA_VERSION, cards: data.cards };
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    cards: migrateFlashcardRecords(data.cards as Flashcard[]),
+  };
+}
+
+function legacySense(card: Flashcard): VocabularySense | undefined {
+  if (!card.senseId && !card.definitionEn && !card.definitionVi)
+    return undefined;
+  return {
+    id: card.senseId || `legacy-${card.id}`,
+    word: card.word,
+    partOfSpeech: card.partOfSpeech || "unknown",
+    pronunciation: card.pronunciation || "",
+    meaningEn: card.definitionEn || card.definitionOriginal || card.meaning,
+    meaningVi: card.definitionVi || "",
+    example: card.exampleEn || "",
+    cefrLevel: "unknown",
+    cefrEstimated: true,
+    definitionOriginal: card.definitionOriginal || card.definitionEn || "",
+    partOfSpeechSource: card.partOfSpeech ? "dictionary" : "none",
+    pronunciationSource: card.pronunciation ? "dictionary" : "none",
+    exampleSource:
+      card.exampleSource || (card.exampleEn ? "dictionary" : "none"),
+    synonyms: card.synonyms || [],
+    antonyms: card.antonyms || [],
+    tags: card.tags || [],
+  };
+}
+
+export function migrateFlashcardRecords(cards: Flashcard[]) {
+  const grouped = new Map<string, Flashcard>();
+  for (const source of cards) {
+    const senses = Array.isArray(source.senses)
+      ? source.senses
+      : [legacySense(source)].filter(
+          (sense): sense is VocabularySense => !!sense,
+        );
+    const key = getFlashcardKey(source.word, source.langFrom, source.langTo);
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...source, senses });
+      continue;
+    }
+    const newest = source.lastSeenAt > existing.lastSeenAt ? source : existing;
+    const byId = new Map(
+      [...(existing.senses || []), ...senses].map((sense) => [sense.id, sense]),
+    );
+    grouped.set(key, {
+      ...existing,
+      ...newest,
+      id: existing.createdAt <= source.createdAt ? existing.id : source.id,
+      createdAt:
+        existing.createdAt <= source.createdAt
+          ? existing.createdAt
+          : source.createdAt,
+      lastSeenAt:
+        existing.lastSeenAt >= source.lastSeenAt
+          ? existing.lastSeenAt
+          : source.lastSeenAt,
+      lookupCount: existing.lookupCount + source.lookupCount,
+      senses: [...byId.values()],
+    });
+  }
+  return [...grouped.values()].sort((a, b) =>
+    b.lastSeenAt.localeCompare(a.lastSeenAt),
+  );
 }
 
 async function ensureStorageDirectory() {
@@ -213,6 +282,7 @@ export async function saveFlashcardFromTask(task: TranslateTask) {
         createdAt: now,
         lastSeenAt: now,
         lookupCount: 1,
+        senses: [],
       });
     }
     await writeDatabase(database);
@@ -221,54 +291,51 @@ export async function saveFlashcardFromTask(task: TranslateTask) {
   });
 }
 
-function vocabularyMeaning(sense: VocabularySense) {
-  return [
-    sense.definitionVi,
-    sense.definitionEn,
-    sense.exampleEn ? `Example: ${sense.exampleEn}` : "",
-    sense.exampleVi ? `Ví dụ: ${sense.exampleVi}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+function vocabularyMeaning(senses: VocabularySense[]) {
+  return senses
+    .map((sense, index) =>
+      [
+        `${index + 1}. ${sense.meaningVi}`,
+        sense.meaningEn,
+        sense.example ? `Example: ${sense.example}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .join("\n\n");
 }
 
-function getStructuredCardKey(word: string, senseId: string) {
-  return `${normalizeFlashcardWord(word)}\u0000${senseId}`;
-}
-
-export async function saveVocabularySenseFromTask(
+export async function saveVocabularySensesFromTask(
   task: TranslateTask,
-  senseId: string,
+  senseIds: string[],
 ) {
   const lookup = (
     task as TranslateTask & { vocabularyLookup?: VocabularyLookup }
   ).vocabularyLookup;
-  const sense = lookup?.senses.find((candidate) => candidate.id === senseId);
-  if (!lookup || !sense) return false;
+  const uniqueIds = [...new Set(senseIds)].slice(0, 2);
+  const selected = uniqueIds
+    .map((id) => lookup?.senses.find((candidate) => candidate.id === id))
+    .filter((sense): sense is VocabularySense => !!sense);
+  if (
+    !lookup ||
+    lookup.normalizationStatus !== "normalized" ||
+    !selected.length ||
+    selected.length !== uniqueIds.length
+  ) {
+    return false;
+  }
 
   return withWriteLock(async () => {
     const database = await readFlashcards();
     const now = new Date().toISOString();
-    const key = getStructuredCardKey(lookup.word, sense.id);
+    const key = getFlashcardKey(lookup.word, lookup.language, "vi");
     const existing = database.cards.find(
-      (card) =>
-        card.senseId && getStructuredCardKey(card.word, card.senseId) === key,
+      (card) => getFlashcardKey(card.word, card.langFrom, card.langTo) === key,
     );
     const item = task.itemId ? Zotero.Items.get(task.itemId) : false;
     const topItem = item ? Zotero.Items.getTopLevel([item])[0] : false;
     const structured = {
-      senseId: sense.id,
-      partOfSpeech: sense.partOfSpeech,
-      pronunciation: sense.pronunciation,
-      definitionOriginal: sense.definitionOriginal,
-      definitionEn: sense.definitionEn,
-      definitionVi: sense.definitionVi,
-      exampleEn: sense.exampleEn,
-      exampleVi: sense.exampleVi,
-      exampleSource: sense.exampleSource,
-      synonyms: sense.synonyms,
-      antonyms: sense.antonyms,
-      tags: sense.tags,
+      senses: selected,
       sourceUrl: lookup.sourceUrl,
       sourceLicense: lookup.sourceLicense,
       llmService: lookup.llmService,
@@ -279,7 +346,8 @@ export async function saveVocabularySenseFromTask(
       existing.service = task.service;
       existing.audio = task.audio;
       Object.assign(existing, structured);
-      if (!existing.meaningEdited) existing.meaning = vocabularyMeaning(sense);
+      existing.meaning = vocabularyMeaning(selected);
+      existing.meaningEdited = false;
       if (topItem) {
         existing.itemID = topItem.id;
         existing.itemTitle = (topItem.getField("title") as string) || "";
@@ -288,7 +356,7 @@ export async function saveVocabularySenseFromTask(
       database.cards.unshift({
         id: `${Zotero.Utilities.randomString()}-${Date.now()}`,
         word: lookup.word,
-        meaning: vocabularyMeaning(sense),
+        meaning: vocabularyMeaning(selected),
         meaningEdited: false,
         langFrom: lookup.language,
         langTo: "vi",
@@ -308,6 +376,14 @@ export async function saveVocabularySenseFromTask(
     task.flashcardSaved = true;
     return true;
   });
+}
+
+/** Compatibility helper for callers that save exactly one selected meaning. */
+export function saveVocabularySenseFromTask(
+  task: TranslateTask,
+  senseId: string,
+) {
+  return saveVocabularySensesFromTask(task, [senseId]);
 }
 
 export async function updateFlashcard(
@@ -344,6 +420,35 @@ function csvCell(value: unknown) {
 }
 
 export function flashcardsToCSV(cards: Flashcard[]) {
+  const dataRows = cards.flatMap((card) => {
+    const senses = card.senses?.length ? card.senses : [legacySense(card)];
+    return senses.map((sense) => [
+      card.word,
+      sense?.partOfSpeech || "",
+      sense?.pronunciation || "",
+      sense?.meaningEn || "",
+      sense?.meaningVi || "",
+      sense?.example || "",
+      sense?.cefrLevel || "unknown",
+      sense?.exampleSource || "",
+      (sense?.synonyms || []).join("; "),
+      (sense?.antonyms || []).join("; "),
+      (sense?.tags || []).join("; "),
+      card.meaning,
+      card.langFrom,
+      card.langTo,
+      card.service,
+      card.itemTitle || "",
+      card.createdAt,
+      card.lastSeenAt,
+      card.lookupCount,
+      card.id,
+      sense?.id || "",
+      card.sourceUrl || "",
+      card.sourceLicense || "",
+      card.llmService || "",
+    ]);
+  });
   const rows = [
     [
       "word",
@@ -352,7 +457,7 @@ export function flashcardsToCSV(cards: Flashcard[]) {
       "definition_english",
       "definition_vietnamese",
       "example_english",
-      "example_vietnamese",
+      "cefr_estimated",
       "example_source",
       "synonyms",
       "antonyms",
@@ -371,32 +476,7 @@ export function flashcardsToCSV(cards: Flashcard[]) {
       "dictionary_license",
       "llm_service",
     ],
-    ...cards.map((card) => [
-      card.word,
-      card.partOfSpeech || "",
-      card.pronunciation || "",
-      card.definitionEn || "",
-      card.definitionVi || "",
-      card.exampleEn || "",
-      card.exampleVi || "",
-      card.exampleSource || "",
-      (card.synonyms || []).join("; "),
-      (card.antonyms || []).join("; "),
-      (card.tags || []).join("; "),
-      card.meaning,
-      card.langFrom,
-      card.langTo,
-      card.service,
-      card.itemTitle || "",
-      card.createdAt,
-      card.lastSeenAt,
-      card.lookupCount,
-      card.id,
-      card.senseId || "",
-      card.sourceUrl || "",
-      card.sourceLicense || "",
-      card.llmService || "",
-    ]),
+    ...dataRows,
   ];
   return `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
 }
@@ -417,36 +497,41 @@ function tsvCell(value: unknown) {
 
 export function flashcardsToAnkiTSV(cards: Flashcard[]) {
   const rows = cards.map((card) => {
+    const senses = card.senses?.length
+      ? card.senses
+      : [legacySense(card)].filter(
+          (sense): sense is VocabularySense => !!sense,
+        );
+    const pronunciations = [...new Set(senses.map((s) => s.pronunciation))]
+      .filter(Boolean)
+      .join(" · ");
     const front = [
       `<div class="word">${escapeHTML(card.word)}</div>`,
-      card.partOfSpeech
-        ? `<div class="pos">${escapeHTML(card.partOfSpeech)}</div>`
-        : "",
-      card.pronunciation
-        ? `<div class="pronunciation">${escapeHTML(card.pronunciation)}</div>`
-        : "",
-      card.exampleEn
-        ? `<div class="example">${escapeHTML(card.exampleEn)}</div>`
+      pronunciations
+        ? `<div class="pronunciation">${escapeHTML(pronunciations)}</div>`
         : "",
     ]
       .filter(Boolean)
       .join("");
+    const structuredBack = senses
+      .map(
+        (sense, index) =>
+          `<section class="sense"><div class="sense-heading">${index + 1}. ${escapeHTML(
+            sense.partOfSpeech,
+          )} · ~${escapeHTML(sense.cefrLevel)}</div><div class="definition vi">${escapeHTML(
+            sense.meaningVi,
+          )}</div><div class="definition en">${escapeHTML(
+            sense.meaningEn,
+          )}</div>${
+            sense.example
+              ? `<div class="example">${escapeHTML(sense.example)}</div>`
+              : ""
+          }</section>`,
+      )
+      .join("");
     const back = [
-      card.definitionVi
-        ? `<div class="definition vi">${escapeHTML(card.definitionVi)}</div>`
-        : "",
-      card.definitionEn
-        ? `<div class="definition en">${escapeHTML(card.definitionEn)}</div>`
-        : `<div class="definition">${escapeHTML(card.meaning)}</div>`,
-      card.exampleVi
-        ? `<div class="example vi">${escapeHTML(card.exampleVi)}</div>`
-        : "",
-      card.synonyms?.length
-        ? `<div><b>Synonyms:</b> ${escapeHTML(card.synonyms.join(", "))}</div>`
-        : "",
-      card.antonyms?.length
-        ? `<div><b>Antonyms:</b> ${escapeHTML(card.antonyms.join(", "))}</div>`
-        : "",
+      structuredBack ||
+        `<div class="definition">${escapeHTML(card.meaning)}</div>`,
       card.sourceUrl
         ? `<div class="source">Source: ${escapeHTML(card.sourceUrl)} (${escapeHTML(
             card.sourceLicense || "",
@@ -455,7 +540,11 @@ export function flashcardsToAnkiTSV(cards: Flashcard[]) {
     ]
       .filter(Boolean)
       .join("");
-    const tags = ["zotero-vocabulary", ...(card.tags || [])]
+    const tags = [
+      "zotero-vocabulary",
+      ...senses.flatMap((sense) => sense.tags),
+      ...senses.map((sense) => sense.cefrLevel),
+    ]
       .map((tag) => tag.replace(/\s+/g, "_"))
       .join(" ");
     return [card.id, front, back, tags].map(tsvCell).join("\t");
@@ -500,12 +589,33 @@ export async function migrateFlashcardStorage(targetDirectory: string) {
   }
   const merged = new Map<string, Flashcard>();
   for (const card of [...targetDatabase.cards, ...sourceDatabase.cards]) {
-    const key = card.senseId
-      ? getStructuredCardKey(card.word, card.senseId)
-      : getFlashcardKey(card.word, card.langFrom, card.langTo);
+    const key = getFlashcardKey(card.word, card.langFrom, card.langTo);
     const previous = merged.get(key);
-    if (!previous || card.lastSeenAt > previous.lastSeenAt)
+    if (!previous) {
       merged.set(key, card);
+      continue;
+    }
+    const newest = card.lastSeenAt > previous.lastSeenAt ? card : previous;
+    const senses = new Map(
+      [...(previous.senses || []), ...(card.senses || [])].map((sense) => [
+        sense.id,
+        sense,
+      ]),
+    );
+    merged.set(key, {
+      ...previous,
+      ...newest,
+      senses: [...senses.values()],
+      lookupCount: previous.lookupCount + card.lookupCount,
+      createdAt:
+        previous.createdAt < card.createdAt
+          ? previous.createdAt
+          : card.createdAt,
+      lastSeenAt:
+        previous.lastSeenAt > card.lastSeenAt
+          ? previous.lastSeenAt
+          : card.lastSeenAt,
+    });
   }
   const mergedDatabase: FlashcardDatabase = {
     schemaVersion: SCHEMA_VERSION,

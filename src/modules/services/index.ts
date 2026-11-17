@@ -23,6 +23,7 @@ import { Cnki } from "./cnki";
 import { CollinsDict } from "./collinsdict";
 import { DeeplFree, DeeplPro } from "./deepl";
 import { FreeDictionaryAPI } from "./freedictionaryapi";
+import { VOCABULARY_NORMALIZATION_VERSION } from "./freedictionaryapi";
 import { Gemini } from "./gemini";
 import { Google, GoogleAPI } from "./google";
 import { Haici } from "./haici";
@@ -294,6 +295,22 @@ export class TranslationServices {
     if (!noCache) {
       // Check cache
       const cachedTask = addon.data.translate.queue.findLast((_t) => {
+        const cachedLookup = (
+          _t as TranslateTask & {
+            vocabularyLookup?: {
+              normalizationStatus?: string;
+              llmService?: string;
+              normalizationVersion?: number;
+            };
+          }
+        ).vocabularyLookup;
+        const vocabularyCacheIsCurrent =
+          task!.service !== "freedictionaryapi" ||
+          (cachedLookup?.normalizationStatus === "normalized" &&
+            cachedLookup.llmService ===
+              (getPref("flashcards.llmService") as string) &&
+            cachedLookup.normalizationVersion ===
+              VOCABULARY_NORMALIZATION_VERSION);
         return (
           _t.status === "success" &&
           typeof _t.result === "string" &&
@@ -301,7 +318,8 @@ export class TranslationServices {
           _t.raw === task!.raw &&
           _t.service === task!.service &&
           (!task.langfrom || _t.langfrom === task.langfrom) &&
-          (!task.langto || _t.langto === task.langto)
+          (!task.langto || _t.langto === task.langto) &&
+          vocabularyCacheIsCurrent
         );
       });
 

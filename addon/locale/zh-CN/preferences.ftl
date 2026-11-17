@@ -139,6 +139,7 @@ pref-advanced-stripEmptyLines =
 pref-flashcards = 词汇闪卡
 pref-flashcards-autoSave =
     .label = 自动保存成功的单词查询
+pref-flashcards-llm = Vocabulary LLM
 pref-flashcards-storage = 数据文件
 pref-flashcards-browse =
     .label = 选择文件夹…

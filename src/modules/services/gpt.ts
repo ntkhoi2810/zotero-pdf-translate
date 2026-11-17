@@ -411,6 +411,7 @@ function createGPTService(id: ID): TranslateService {
   return {
     id,
     type: "sentence",
+    supportsPromptOverride: true,
     helpUrl:
       id === "azuregpt"
         ? "https://learn.microsoft.com/en-us/azure/ai-foundry/openai/reference#chat-completions"

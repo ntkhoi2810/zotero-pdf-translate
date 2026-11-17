@@ -117,20 +117,25 @@ export async function initializeFlashcardWindow(win: Window) {
     reviewCard.hidden = !card;
     reviewEmpty.hidden = !!card;
     if (!card) return;
+    const senses = card.senses || [];
+    const pronunciations = [...new Set(senses.map((s) => s.pronunciation))]
+      .filter(Boolean)
+      .join(" · ");
     query<HTMLElement>("#flashcard-review-word").textContent = [
       card.word,
-      card.partOfSpeech ? `[${card.partOfSpeech}]` : "",
-      card.pronunciation || "",
-      card.exampleEn || "",
+      pronunciations,
     ]
       .filter(Boolean)
       .join("\n");
     query<HTMLElement>("#flashcard-review-meaning").textContent = [
-      card.definitionVi || "",
-      card.definitionEn || card.meaning,
-      card.exampleVi || "",
-      card.synonyms?.length ? `Synonyms: ${card.synonyms.join(", ")}` : "",
-      card.antonyms?.length ? `Antonyms: ${card.antonyms.join(", ")}` : "",
+      senses.length && !card.meaningEdited
+        ? senses
+            .map(
+              (sense, index) =>
+                `${index + 1}. [${sense.partOfSpeech}] ~${sense.cefrLevel}\n${sense.meaningVi}\n${sense.meaningEn}${sense.example ? `\n${sense.example}` : ""}`,
+            )
+            .join("\n\n")
+        : card.meaning,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -161,9 +166,11 @@ export async function initializeFlashcardWindow(win: Window) {
     const meaning = createHTML("span");
     meaning.textContent = card.meaning;
     const meta = createHTML("small");
+    const firstSense = card.senses?.[0];
     meta.textContent = [
-      card.partOfSpeech,
-      card.pronunciation,
+      firstSense?.partOfSpeech || card.partOfSpeech,
+      firstSense?.pronunciation || card.pronunciation,
+      card.senses?.length ? `${card.senses.length} meanings` : "",
       `${card.langFrom || "?"} → ${card.langTo || "?"}`,
       `${card.lookupCount}×`,
     ]

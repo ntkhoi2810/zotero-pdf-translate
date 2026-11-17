@@ -2,6 +2,7 @@ import {
   flashcardsToCSV,
   flashcardsToAnkiTSV,
   getFlashcardKey,
+  migrateFlashcardRecords,
   normalizeFlashcardWord,
 } from "../src/modules/flashcards/storage";
 import type { Flashcard } from "../src/modules/flashcards/storage";
@@ -68,6 +69,44 @@ describe("Flashcards", function () {
       exampleVi: "Kết quả được lưu trong bộ nhớ đệm.",
       exampleSource: "ai",
       tags: ["computing"],
+      senses: [
+        {
+          id: "e0-s2",
+          word: "cache",
+          partOfSpeech: "noun",
+          pronunciation: "/kæʃ/",
+          meaningEn: "A fast storage layer.",
+          meaningVi: "Một lớp lưu trữ nhanh.",
+          example: "The result is stored in the cache.",
+          cefrLevel: "B2",
+          cefrEstimated: true,
+          definitionOriginal: "A fast storage layer.",
+          partOfSpeechSource: "dictionary",
+          pronunciationSource: "dictionary",
+          exampleSource: "ai",
+          synonyms: [],
+          antonyms: [],
+          tags: ["computing"],
+        },
+        {
+          id: "e0-s3",
+          word: "cache",
+          partOfSpeech: "noun",
+          pronunciation: "/kæʃ/",
+          meaningEn: "A hidden collection of items.",
+          meaningVi: "Một kho vật phẩm được cất giấu.",
+          example: "They found a cache of supplies.",
+          cefrLevel: "C1",
+          cefrEstimated: true,
+          definitionOriginal: "A hidden collection of items.",
+          partOfSpeechSource: "dictionary",
+          pronunciationSource: "dictionary",
+          exampleSource: "ai",
+          synonyms: [],
+          antonyms: [],
+          tags: [],
+        },
+      ],
     };
     const tsv = flashcardsToAnkiTSV([card]);
     assert.include(tsv, "#separator:Tab");
@@ -75,5 +114,76 @@ describe("Flashcards", function () {
     assert.include(tsv, "stable-card-id\t");
     assert.include(tsv, "zotero-vocabulary computing");
     assert.include(tsv, "Một lớp lưu trữ nhanh.");
+    assert.include(tsv, "Một kho vật phẩm được cất giấu.");
+    assert.include(tsv, "B2");
+  });
+
+  it("exports one CSV row per structured meaning", function () {
+    const base: Flashcard = {
+      id: "multi",
+      word: "run",
+      meaning: "two meanings",
+      meaningEdited: false,
+      langFrom: "en",
+      langTo: "vi",
+      service: "freedictionaryapi",
+      audio: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+      lookupCount: 1,
+      senses: ["verb", "noun"].map((partOfSpeech, index) => ({
+        id: `sense-${index}`,
+        word: "run",
+        partOfSpeech,
+        pronunciation: "/rʌn/",
+        meaningEn: `Meaning ${index}`,
+        meaningVi: `Nghĩa ${index}`,
+        example: `Example ${index}.`,
+        cefrLevel: "A2" as const,
+        cefrEstimated: true as const,
+        definitionOriginal: `Meaning ${index}`,
+        partOfSpeechSource: "dictionary" as const,
+        pronunciationSource: "dictionary" as const,
+        exampleSource: "ai" as const,
+        synonyms: [],
+        antonyms: [],
+        tags: [],
+      })),
+    };
+    const csv = flashcardsToCSV([base]);
+    assert.lengthOf(csv.split("\r\n"), 3);
+    assert.include(csv, '"sense-0"');
+    assert.include(csv, '"sense-1"');
+  });
+
+  it("merges schema-v2 per-sense cards without dropping meanings", function () {
+    const legacy = (
+      id: string,
+      senseId: string,
+      definitionVi: string,
+    ): Flashcard => ({
+      id,
+      word: "thread",
+      meaning: definitionVi,
+      meaningEdited: false,
+      langFrom: "en",
+      langTo: "vi",
+      service: "freedictionaryapi",
+      audio: [],
+      createdAt: `2026-01-0${id}T00:00:00.000Z`,
+      lastSeenAt: `2026-01-0${id}T00:00:00.000Z`,
+      lookupCount: 1,
+      senseId,
+      partOfSpeech: "noun",
+      definitionEn: `Definition ${id}`,
+      definitionVi,
+    });
+    const migrated = migrateFlashcardRecords([
+      legacy("1", "sense-a", "Sợi chỉ"),
+      legacy("2", "sense-b", "Chuỗi thảo luận"),
+    ]);
+    assert.lengthOf(migrated, 1);
+    assert.lengthOf(migrated[0].senses || [], 2);
+    assert.equal(migrated[0].lookupCount, 2);
   });
 });

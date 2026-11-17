@@ -14,6 +14,7 @@ pref("__prefsPrefix__.translateSource", "");
 pref("__prefsPrefix__.dictSource", "");
 pref("__prefsPrefix__.flashcards.autoSave", true);
 pref("__prefsPrefix__.flashcards.storageDirectory", "");
+pref("__prefsPrefix__.flashcards.llmService", "");
 pref("__prefsPrefix__.sourceLanguage", "en-US");
 pref("__prefsPrefix__.targetLanguage", "");
 pref("__prefsPrefix__.fontSize", "12");

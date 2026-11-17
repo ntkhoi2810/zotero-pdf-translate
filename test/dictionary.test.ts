@@ -86,13 +86,15 @@ describe("FreeDictionaryAPI vocabulary parser", function () {
     assert.isFalse(pool.some((sense) => sense.tags.includes("obsolete")));
   });
 
-  it("falls back to at most two distinct useful meanings", function () {
+  it("shows up to five raw meanings while normalization is unavailable", function () {
     const selected = fallbackVocabularySenses(
+      "thread",
       flattenDictionaryEntries(payload),
     );
-    assert.lengthOf(selected, 2);
-    assert.equal(selected[0].reason, "daily");
-    assert.equal(selected[1].reason, "academic-cs");
+    assert.lengthOf(selected, 3);
+    assert.equal(selected[0].word, "thread");
+    assert.equal(selected[0].meaningEn, "A long, thin strand of cotton.");
+    assert.equal(selected[0].cefrLevel, "unknown");
     assert.notEqual(selected[0].id, selected[1].id);
   });
 });

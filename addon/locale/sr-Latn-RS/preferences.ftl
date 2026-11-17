@@ -129,6 +129,7 @@ pref-advanced-stripEmptyLines =
 pref-flashcards = Kartice rečnika
 pref-flashcards-autoSave =
     .label = Automatski sačuvaj uspešne pretrage jedne reči
+pref-flashcards-llm = Vocabulary LLM
 pref-flashcards-storage = Datoteka podataka
 pref-flashcards-browse =
     .label = Izaberi fasciklu…

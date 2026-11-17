@@ -65,6 +65,7 @@ pref-interface = User Interface
 pref-flashcards = Vocabulary Flashcards
 pref-flashcards-autoSave =
     .label = Automatically save successful single-word lookups
+pref-flashcards-llm = Vocabulary LLM
 pref-flashcards-storage = Data file
 pref-flashcards-browse =
     .label = Choose Folder…

@@ -2,6 +2,7 @@ import { getPref, TranslateTask, TranslateTaskRunner } from "../../utils";
 import {
   buildMeaningCandidatePool,
   candidateToVocabularySense,
+  CEFRLevel,
   fallbackVocabularySenses,
   flattenDictionaryEntries,
   formatVocabularyLookup,
@@ -11,18 +12,19 @@ import {
 import { TranslateService } from "./base";
 
 type VocabularyTask = TranslateTask & { vocabularyLookup?: VocabularyLookup };
+export const VOCABULARY_NORMALIZATION_VERSION = 1;
 
-const SUPPORTED_LLM_SERVICES = new Set([
-  "chatgpt",
-  "customgpt1",
-  "customgpt2",
-  "customgpt3",
-  "azuregpt",
-  "claude",
-  "gemini",
+const CEFR_LEVELS = new Set<CEFRLevel>([
+  "A1",
+  "A2",
+  "B1",
+  "B2",
+  "C1",
+  "C2",
+  "unknown",
 ]);
 
-function parseJSONResponse(text: string) {
+export function parseVocabularyJSON(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
   const source = (fenced || text).trim();
   const start = source.indexOf("{");
@@ -31,43 +33,114 @@ function parseJSONResponse(text: string) {
   return JSON.parse(source.slice(start, end + 1));
 }
 
-async function enrichWithConfiguredLLM(
+function requiredString(value: unknown, field: string) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`LLM JSON has an empty ${field}.`);
+  }
+  return value.trim();
+}
+
+function sameWord(left: string, right: string) {
+  return (
+    left.normalize("NFKC").trim().toLocaleLowerCase() ===
+    right.normalize("NFKC").trim().toLocaleLowerCase()
+  );
+}
+
+export function normalizeVocabularyResponse(
+  word: string,
+  parsed: any,
+  candidates: ReturnType<typeof flattenDictionaryEntries>,
+) {
+  if (!Array.isArray(parsed?.senses)) {
+    throw new Error("LLM JSON is missing the senses array.");
+  }
+  const pool = buildMeaningCandidatePool(candidates);
+  const byId = new Map(pool.map((sense) => [sense.id, sense]));
+  const seen = new Set<string>();
+  const normalized: VocabularySense[] = [];
+
+  for (const raw of parsed.senses) {
+    if (normalized.length >= 5) break;
+    const id = requiredString(raw?.sourceSenseId ?? raw?.id, "sourceSenseId");
+    if (seen.has(id)) continue;
+    const original = byId.get(id);
+    if (!original) throw new Error(`LLM selected an unknown sense: ${id}.`);
+    const normalizedWord = requiredString(raw?.word, "word");
+    if (!sameWord(word, normalizedWord)) {
+      throw new Error("LLM changed the requested word.");
+    }
+
+    const sense = candidateToVocabularySense(word, original);
+    const apiPronunciation = sense.pronunciation;
+    const apiPartOfSpeech = sense.partOfSpeech;
+    const apiExample = sense.example;
+    sense.partOfSpeech = requiredString(raw?.partOfSpeech, "partOfSpeech");
+    sense.pronunciation = requiredString(raw?.pronunciation, "pronunciation");
+    sense.meaningEn = requiredString(raw?.meaningEn, "meaningEn");
+    sense.meaningVi = requiredString(raw?.meaningVi, "meaningVi");
+    sense.example = requiredString(raw?.example, "example");
+    const cefr = typeof raw?.cefrLevel === "string" ? raw.cefrLevel : "unknown";
+    sense.cefrLevel = CEFR_LEVELS.has(cefr as CEFRLevel)
+      ? (cefr as CEFRLevel)
+      : "unknown";
+    sense.partOfSpeechSource =
+      apiPartOfSpeech !== "unknown" && sense.partOfSpeech === apiPartOfSpeech
+        ? "dictionary"
+        : "ai";
+    sense.pronunciationSource =
+      apiPronunciation && sense.pronunciation === apiPronunciation
+        ? "dictionary"
+        : "ai";
+    sense.exampleSource =
+      apiExample && sense.example === apiExample ? "dictionary" : "ai";
+    normalized.push(sense);
+    seen.add(id);
+  }
+
+  if (!normalized.length) {
+    throw new Error("LLM selected no valid dictionary meaning.");
+  }
+  return normalized;
+}
+
+async function normalizeWithConfiguredLLM(
   word: string,
   candidates: ReturnType<typeof flattenDictionaryEntries>,
   itemId?: number,
 ) {
-  const serviceId = getPref("translateSource") as string;
-  if (!SUPPORTED_LLM_SERVICES.has(serviceId)) {
-    throw new Error(
-      "The paragraph translation service is not a supported LLM. Raw meanings are shown.",
-    );
-  }
+  const serviceId = (getPref("flashcards.llmService") as string)?.trim();
+  if (!serviceId) throw new Error("Choose a vocabulary LLM in Preferences.");
   const service = addon.data.translate.services.getServiceById(serviceId);
-  if (!service) throw new Error(`LLM service ${serviceId} is unavailable.`);
+  if (!service?.supportsPromptOverride) {
+    throw new Error(`Service ${serviceId} cannot normalize vocabulary data.`);
+  }
 
   const pool = buildMeaningCandidatePool(candidates);
   const compact = pool.map((sense) => ({
-    id: sense.id,
+    sourceSenseId: sense.id,
     partOfSpeech: sense.partOfSpeech,
+    pronunciations: sense.pronunciations.map((item) => item.text),
     definition: sense.definition,
     parentDefinition: sense.parentDefinition || undefined,
     tags: sense.tags,
-    example: sense.examples[0] || undefined,
+    examples: sense.examples.slice(0, 2),
   }));
   const system = [
-    "You curate English vocabulary for a Vietnamese learner who reads academic computer-science papers.",
-    "Select at most two distinct meanings from the supplied dictionary candidates.",
-    "Prefer one common everyday meaning and one academic/computer-science meaning when one genuinely exists.",
-    "Otherwise select the two most useful everyday meanings. Ignore archaic, obsolete, rare, and overly specialized meanings.",
-    "Never invent a meaning or change a candidate id.",
-    "Rewrite definitionEn in concise learner-friendly English and translate it accurately to Vietnamese.",
-    "Use the supplied example when present. When absent, create one short natural example and its Vietnamese translation.",
-    'Return only JSON: {"senses":[{"id":string,"definitionEn":string,"definitionVi":string,"exampleEn":string,"exampleVi":string,"reason":"daily"|"academic-cs"}]}.',
+    "You normalize English dictionary data for a Vietnamese learner.",
+    "Rank and return at most five distinct, common meanings from the supplied candidates; array order is the popularity rank.",
+    "Ignore archaic, obsolete, rare, and overly specialized meanings.",
+    "Never invent a meaning, change sourceSenseId, or change the requested word.",
+    "For every returned meaning, provide a normalized English part of speech, one IPA pronunciation, concise English and Vietnamese meanings, one short natural English example, and an estimated CEFR level.",
+    "Reuse accurate API fields; fill only missing or unsuitable fields.",
+    "CEFR must be A1, A2, B1, B2, C1, C2, or unknown and is only an estimate.",
+    'Return only JSON: {"senses":[{"sourceSenseId":string,"word":string,"partOfSpeech":string,"pronunciation":string,"meaningVi":string,"meaningEn":string,"example":string,"cefrLevel":"A1"|"A2"|"B1"|"B2"|"C1"|"C2"|"unknown"}]}.',
   ].join(" ");
+  const input = JSON.stringify({ word, candidates: compact });
   const llmTask = {
     id: `vocabulary-${Date.now()}`,
     type: "custom",
-    raw: JSON.stringify({ word, candidates: compact }),
+    raw: input,
     result: "",
     audio: [],
     service: serviceId,
@@ -83,77 +156,45 @@ async function enrichWithConfiguredLLM(
     processed: false,
     wordLookup: false,
     flashcardSaved: false,
-    llmPromptOverride: {
-      system,
-      user: JSON.stringify({ word, candidates: compact }),
-    },
+    llmPromptOverride: { system, user: input },
   } as TranslateTask & {
     llmPromptOverride: { system: string; user: string };
   };
+
   await new TranslateTaskRunner(service.translate).run(llmTask);
   if (llmTask.status !== "success" || !llmTask.result.trim()) {
-    throw new Error("The configured LLM could not enrich this word.");
+    throw new Error("The configured LLM could not normalize this word.");
   }
-
-  const parsed = parseJSONResponse(llmTask.result);
-  if (!Array.isArray(parsed?.senses)) {
-    throw new Error("LLM JSON is missing the senses array.");
-  }
-  const byId = new Map(pool.map((sense) => [sense.id, sense]));
-  const seen = new Set<string>();
-  const enriched: VocabularySense[] = [];
-  for (const raw of parsed.senses) {
-    if (enriched.length >= 2 || typeof raw?.id !== "string" || seen.has(raw.id))
-      continue;
-    const original = byId.get(raw.id);
-    if (!original) continue;
-    seen.add(raw.id);
-    const sense = candidateToVocabularySense(
-      original,
-      raw.reason === "academic-cs" ? "academic-cs" : "daily",
-    );
-    if (typeof raw.definitionEn === "string" && raw.definitionEn.trim())
-      sense.definitionEn = raw.definitionEn.trim();
-    if (typeof raw.definitionVi === "string")
-      sense.definitionVi = raw.definitionVi.trim();
-    if (typeof raw.exampleEn === "string" && raw.exampleEn.trim()) {
-      sense.exampleEn = raw.exampleEn.trim();
-      sense.exampleSource = original.examples.length ? "dictionary" : "ai";
-    }
-    if (typeof raw.exampleVi === "string")
-      sense.exampleVi = raw.exampleVi.trim();
-    enriched.push(sense);
-  }
-  if (!enriched.length)
-    throw new Error("LLM selected no valid dictionary meaning.");
-  return { serviceId, senses: enriched };
+  return {
+    serviceId,
+    senses: normalizeVocabularyResponse(
+      word,
+      parseVocabularyJSON(llmTask.result),
+      candidates,
+    ),
+  };
 }
 
 const translate = <TranslateService["translate"]>async function (data) {
-  const word = data.raw.normalize("NFKC").trim();
+  const requestedWord = data.raw.normalize("NFKC").trim();
   const language = "en";
   const xhr = await Zotero.HTTP.request(
     "GET",
     `https://freedictionaryapi.com/api/v1/entries/${encodeURIComponent(
       language,
-    )}/${encodeURIComponent(word)}`,
-    {
-      headers: {
-        Accept: "application/json",
-      },
-      responseType: "json",
-    },
+    )}/${encodeURIComponent(requestedWord)}`,
+    { headers: { Accept: "application/json" }, responseType: "json" },
   );
-  if (xhr?.status !== 200) {
-    throw `Request error: ${xhr?.status}`;
-  }
+  if (xhr?.status !== 200) throw new Error(`Request error: ${xhr?.status}`);
 
   const payload = xhr.response;
+  const word = typeof payload?.word === "string" ? payload.word : requestedWord;
   const candidates = flattenDictionaryEntries(payload);
   if (!candidates.length)
     throw new Error(`No dictionary entry found for ${word}.`);
+
   const lookup: VocabularyLookup = {
-    word: typeof payload?.word === "string" ? payload.word : word,
+    word,
     language,
     sourceUrl:
       typeof payload?.source?.url === "string"
@@ -163,19 +204,25 @@ const translate = <TranslateService["translate"]>async function (data) {
       typeof payload?.source?.license?.name === "string"
         ? payload.source.license.name
         : "CC BY-SA 4.0",
-    senses: fallbackVocabularySenses(candidates),
+    normalizationStatus: "raw",
+    normalizationVersion: VOCABULARY_NORMALIZATION_VERSION,
+    senses: fallbackVocabularySenses(word, candidates),
   };
+
   try {
-    const enriched = await enrichWithConfiguredLLM(
+    const normalized = await normalizeWithConfiguredLLM(
       word,
       candidates,
       data.itemId,
     );
-    lookup.llmService = enriched.serviceId;
-    lookup.senses = enriched.senses;
+    lookup.llmService = normalized.serviceId;
+    lookup.senses = normalized.senses;
+    lookup.normalizationStatus = "normalized";
   } catch (error) {
+    lookup.normalizationStatus = "error";
     lookup.llmError = error instanceof Error ? error.message : String(error);
   }
+
   (data as VocabularyTask).vocabularyLookup = lookup;
   data.result = formatVocabularyLookup(lookup);
 };
@@ -183,6 +230,5 @@ const translate = <TranslateService["translate"]>async function (data) {
 export const FreeDictionaryAPI: TranslateService = {
   id: "freedictionaryapi",
   type: "word",
-
   translate,
 };

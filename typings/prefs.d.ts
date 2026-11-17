@@ -23,6 +23,7 @@ declare namespace _ZoteroTypes {
       "dictSource": string;
       "flashcards.autoSave": boolean;
       "flashcards.storageDirectory": string;
+      "flashcards.llmService": string;
       "sourceLanguage": string;
       "targetLanguage": string;
       "fontSize": string;
